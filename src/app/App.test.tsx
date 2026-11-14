@@ -15,8 +15,8 @@ vi.mock('../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/api')>();
   return {
     ...actual,
-    memberApi: { login: vi.fn(), signup: vi.fn(), logout: vi.fn(), getProfile: vi.fn(), updateProfile: vi.fn() },
-    productApi: { getProducts: vi.fn(), getProductCount: vi.fn(), getProduct: vi.fn() },
+    memberApi: { login: vi.fn(), signup: vi.fn(), logout: vi.fn(), getProfile: vi.fn(), updateProfile: vi.fn(), getTopUsers: vi.fn().mockResolvedValue([]) },
+    productApi: { getProducts: vi.fn(), getProductCount: vi.fn(), getProduct: vi.fn(), getProductsByIds: vi.fn().mockResolvedValue([]) },
     orderApi: { createOrder: vi.fn(), getOrders: vi.fn(), updateOrder: vi.fn() },
   };
 });

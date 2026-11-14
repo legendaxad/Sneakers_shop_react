@@ -1,27 +1,37 @@
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Box, Card, CardContent, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { Box, Button, Card, CardContent, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import { useCartStore, useNoticeStore } from '../../app/store';
 import type { Product } from '../../types/product';
 import { formatPrice, titleCase } from '../../utils/format';
 import { SafeImage } from './SafeImage';
+import { WishlistButton } from './WishlistButton';
 
 interface ProductCardProps {
   product: Product;
+  /** Ranking badge (e.g. most viewed position). */
+  rank?: number;
+  /** Show the product's real view count from the backend. */
+  showViews?: boolean;
+  /** `cart` (default) shows the quick add button; `view` shows a "View product" button. */
+  action?: 'cart' | 'view';
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+export function ProductCard({ product, rank, showViews, action = 'cart' }: ProductCardProps) {
   const addItem = useCartStore((state) => state.addItem);
   const notify = useNoticeStore((state) => state.notify);
   const navigate = useNavigate();
   const soldOut = product.productLeftCount <= 0;
   const needsSize = (product.productSizes?.length ?? 0) > 0;
+  const productUrl = `/product/${product._id}`;
 
   const handleAdd = () => {
     if (needsSize) {
       // Shoes need a size: send the customer to choose one.
-      navigate(`/product/${product._id}`);
+      navigate(productUrl);
       return;
     }
     addItem(product, null, 1);
@@ -36,25 +46,23 @@ export function ProductCard({ product }: ProductCardProps) {
       transition={{ duration: 0.35 }}
       style={{ height: '100%' }}
     >
-      <Card component="article" className="ms-product-card">
-        <RouterLink to={`/product/${product._id}`} className="ms-product-card-media" aria-label={product.productName}>
-          <SafeImage src={product.productImages?.[0]} alt={product.productName} />
+      <Card component="article" className="ms-product-card" aria-label={product.productName}>
+        <Box className="ms-product-card-media">
+          <RouterLink to={productUrl} tabIndex={-1} aria-hidden="true">
+            <SafeImage src={product.productImages?.[0]} alt="" />
+          </RouterLink>
           <span className="ms-product-card-brand">{product.productBrand}</span>
-        </RouterLink>
+          {rank !== undefined && <span className="ms-product-card-rank">#{rank}</span>}
+          <WishlistButton productId={product._id} productName={product.productName} />
+        </Box>
 
         <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
           <Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
-            <Box>
+            <Box sx={{ minWidth: 0 }}>
               <Typography className="ms-eyebrow" component="p" sx={{ letterSpacing: '0.2em !important' }}>
                 {titleCase(product.productCategory)}
               </Typography>
-              <Typography
-                component={RouterLink}
-                to={`/product/${product._id}`}
-                variant="h6"
-                className="ms-product-card-title"
-                sx={{ mt: 1, display: 'block' }}
-              >
+              <Typography component={RouterLink} to={productUrl} variant="h6" className="ms-product-card-title" sx={{ mt: 1 }}>
                 {product.productName}
               </Typography>
             </Box>
@@ -63,32 +71,40 @@ export function ProductCard({ product }: ProductCardProps) {
             </Typography>
           </Stack>
 
-          <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mt: 'auto' }}>
-            {soldOut ? (
+          <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mt: 'auto', gap: 1 }}>
+            {showViews ? (
+              <Chip
+                size="small"
+                icon={<VisibilityOutlinedIcon sx={{ fontSize: 16 }} />}
+                label={`${product.productViews.toLocaleString('en-US')} ${product.productViews === 1 ? 'view' : 'views'}`}
+                sx={{ bgcolor: '#f3efe9' }}
+              />
+            ) : soldOut ? (
               <Chip label="Sold out" size="small" />
             ) : (
               <Typography variant="body2" color="text.secondary">
                 {product.productLeftCount} left
               </Typography>
             )}
-            <Tooltip title={soldOut ? 'Sold out' : needsSize ? 'Choose a size' : 'Add to cart'}>
-              <span>
-                <IconButton
-                  onClick={handleAdd}
-                  disabled={soldOut}
-                  aria-label={needsSize ? `Choose a size for ${product.productName}` : `Add ${product.productName} to cart`}
-                  sx={{
-                    bgcolor: 'primary.dark',
-                    color: '#fff',
-                    px: 1.5,
-                    '&:hover': { bgcolor: '#292524' },
-                    '&.Mui-disabled': { bgcolor: 'divider' },
-                  }}
-                >
-                  <AddShoppingCartIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
+
+            {action === 'view' ? (
+              <Button component={RouterLink} to={productUrl} size="small" variant="contained" endIcon={<ArrowForwardIcon />}>
+                View product
+              </Button>
+            ) : (
+              <Tooltip title={soldOut ? 'Sold out' : needsSize ? 'Choose a size' : 'Add to cart'}>
+                <span>
+                  <IconButton
+                    onClick={handleAdd}
+                    disabled={soldOut}
+                    className="ms-quick-add"
+                    aria-label={needsSize ? `Choose a size for ${product.productName}` : `Add ${product.productName} to cart`}
+                  >
+                    <AddShoppingCartIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            )}
           </Stack>
         </CardContent>
       </Card>

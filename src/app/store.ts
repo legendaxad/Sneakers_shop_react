@@ -163,3 +163,85 @@ export const useNoticeStore = create<NoticeState>((set) => ({
   notify: (message, severity = 'info') => set({ open: true, message, severity }),
   close: () => set({ open: false }),
 }));
+
+/* ------------------------------------------------------------------ */
+/* Product id lists kept in the browser (wishlist, recently viewed)    */
+/* ------------------------------------------------------------------ */
+
+const OBJECT_ID = /^[a-f\d]{24}$/i;
+
+/** Keep only unique, well-formed product ids from persisted storage. */
+const sanitizeIds = (value: unknown, limit: number): string[] =>
+  Array.isArray(value)
+    ? [...new Set(value.filter((id): id is string => typeof id === 'string' && OBJECT_ID.test(id)))].slice(0, limit)
+    : [];
+
+export const RECENTLY_VIEWED_LIMIT = 8;
+export const WISHLIST_LIMIT = 50;
+
+interface RecentlyViewedState {
+  ids: string[];
+  addViewed: (productId: string) => void;
+  removeViewed: (productId: string) => void;
+  clearViewed: () => void;
+}
+
+/** Most recent first, no duplicates, capped at RECENTLY_VIEWED_LIMIT. */
+export const useRecentlyViewedStore = create<RecentlyViewedState>()(
+  persist(
+    (set) => ({
+      ids: [],
+      addViewed: (productId) =>
+        set((state) => ({
+          ids: [productId, ...state.ids.filter((id) => id !== productId)].slice(0, RECENTLY_VIEWED_LIMIT),
+        })),
+      removeViewed: (productId) => set((state) => ({ ids: state.ids.filter((id) => id !== productId) })),
+      clearViewed: () => set({ ids: [] }),
+    }),
+    {
+      name: 'multi-shop-recently-viewed',
+      version: 1,
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({ ids: state.ids }),
+      merge: (persisted, current) => ({
+        ...current,
+        ids: sanitizeIds((persisted as { ids?: unknown } | undefined)?.ids, RECENTLY_VIEWED_LIMIT),
+      }),
+    },
+  ),
+);
+
+interface WishlistState {
+  ids: string[];
+  toggleWishlist: (productId: string) => boolean;
+  removeFromWishlist: (productId: string) => void;
+  clearWishlist: () => void;
+}
+
+/** Product ids saved by the shopper in this browser (newest first). */
+export const useWishlistStore = create<WishlistState>()(
+  persist(
+    (set, get) => ({
+      ids: [],
+      toggleWishlist: (productId) => {
+        const saved = get().ids.includes(productId);
+        set((state) => ({
+          ids: saved ? state.ids.filter((id) => id !== productId) : [productId, ...state.ids].slice(0, WISHLIST_LIMIT),
+        }));
+        return !saved;
+      },
+      removeFromWishlist: (productId) => set((state) => ({ ids: state.ids.filter((id) => id !== productId) })),
+      clearWishlist: () => set({ ids: [] }),
+    }),
+    {
+      name: 'multi-shop-wishlist',
+      version: 1,
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({ ids: state.ids }),
+      merge: (persisted, current) => ({
+        ...current,
+        ids: sanitizeIds((persisted as { ids?: unknown } | undefined)?.ids, WISHLIST_LIMIT),
+      }),
+    },
+  ),
+);

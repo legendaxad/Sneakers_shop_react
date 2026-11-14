@@ -5,13 +5,15 @@ import { resolveImageUrl } from '../../utils/format';
 interface SafeImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   /** Raw backend path (`uploads/...`), absolute URL, or empty. */
   src?: string | null;
+  /** Local image used when `src` is empty or fails to load (defaults to the sneaker placeholder). */
+  fallback?: string;
 }
 
-/** Image that resolves backend upload paths and falls back to a local placeholder if loading fails. */
-export function SafeImage({ src, alt = '', ...rest }: SafeImageProps) {
-  const resolved = resolveImageUrl(src);
+/** Image that resolves backend upload paths and falls back to a local image if loading fails. */
+export function SafeImage({ src, alt = '', fallback = PLACEHOLDER_IMAGE, ...rest }: SafeImageProps) {
+  const resolved = src ? resolveImageUrl(src) : fallback;
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const current = failedSrc === resolved ? PLACEHOLDER_IMAGE : resolved;
+  const current = failedSrc === resolved ? fallback : resolved;
 
   return (
     <img
@@ -20,7 +22,7 @@ export function SafeImage({ src, alt = '', ...rest }: SafeImageProps) {
       alt={alt}
       loading={rest.loading ?? 'lazy'}
       onError={() => {
-        if (current !== PLACEHOLDER_IMAGE) setFailedSrc(resolved);
+        if (current !== fallback) setFailedSrc(resolved);
       }}
     />
   );

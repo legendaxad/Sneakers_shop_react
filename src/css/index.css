@@ -42,3 +42,25 @@ img {
 a {
   color: inherit;
 }
+
+/* Visible keyboard focus for links and custom buttons */
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--ms-ink);
+  outline-offset: 3px;
+}
+
+/* Respect the OS "reduce motion" setting for CSS transitions (framer-motion is configured separately). */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { cartItemKey, selectCartCount, selectCartSubtotal, useCartStore } from './store';
+import {
+  cartItemKey,
+  RECENTLY_VIEWED_LIMIT,
+  selectCartCount,
+  selectCartSubtotal,
+  useCartStore,
+  useRecentlyViewedStore,
+  useWishlistStore,
+} from './store';
 import { ProductCollection, ProductStatus, type Product } from '../types/product';
 
 const product = (overrides: Partial<Product> = {}): Product => ({
@@ -90,5 +98,61 @@ describe('cart store', () => {
     );
     await useCartStore.persist.rehydrate();
     expect(useCartStore.getState().items).toEqual([]);
+  });
+});
+
+const oid = (n: number) => n.toString(16).padStart(24, '0');
+
+describe('recently viewed store', () => {
+  beforeEach(() => useRecentlyViewedStore.setState({ ids: [] }));
+
+  it('keeps the most recent first without duplicates', () => {
+    const { addViewed } = useRecentlyViewedStore.getState();
+    addViewed(oid(1));
+    addViewed(oid(2));
+    addViewed(oid(1));
+    expect(useRecentlyViewedStore.getState().ids).toEqual([oid(1), oid(2)]);
+  });
+
+  it('is capped at the limit', () => {
+    for (let n = 1; n <= RECENTLY_VIEWED_LIMIT + 3; n += 1) useRecentlyViewedStore.getState().addViewed(oid(n));
+    const { ids } = useRecentlyViewedStore.getState();
+    expect(ids).toHaveLength(RECENTLY_VIEWED_LIMIT);
+    expect(ids[0]).toBe(oid(RECENTLY_VIEWED_LIMIT + 3));
+  });
+
+  it('persists across a refresh and drops malformed ids', async () => {
+    useRecentlyViewedStore.getState().addViewed(oid(7));
+    const raw = localStorage.getItem('multi-shop-recently-viewed')!;
+    useRecentlyViewedStore.setState({ ids: [] });
+    localStorage.setItem('multi-shop-recently-viewed', raw);
+    await useRecentlyViewedStore.persist.rehydrate();
+    expect(useRecentlyViewedStore.getState().ids).toEqual([oid(7)]);
+
+    localStorage.setItem('multi-shop-recently-viewed', JSON.stringify({ version: 1, state: { ids: ['<script>', 42, oid(3), oid(3)] } }));
+    await useRecentlyViewedStore.persist.rehydrate();
+    expect(useRecentlyViewedStore.getState().ids).toEqual([oid(3)]);
+  });
+});
+
+describe('wishlist store', () => {
+  beforeEach(() => useWishlistStore.setState({ ids: [] }));
+
+  it('toggles products on and off', () => {
+    const { toggleWishlist } = useWishlistStore.getState();
+    expect(toggleWishlist(oid(1))).toBe(true);
+    expect(toggleWishlist(oid(2))).toBe(true);
+    expect(useWishlistStore.getState().ids).toEqual([oid(2), oid(1)]);
+    expect(toggleWishlist(oid(1))).toBe(false);
+    expect(useWishlistStore.getState().ids).toEqual([oid(2)]);
+  });
+
+  it('survives a refresh', async () => {
+    useWishlistStore.getState().toggleWishlist(oid(5));
+    const raw = localStorage.getItem('multi-shop-wishlist')!;
+    useWishlistStore.setState({ ids: [] });
+    localStorage.setItem('multi-shop-wishlist', raw);
+    await useWishlistStore.persist.rehydrate();
+    expect(useWishlistStore.getState().ids).toEqual([oid(5)]);
   });
 });

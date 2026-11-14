@@ -27,6 +27,14 @@ export interface Member {
   updatedAt?: string;
 }
 
+/** Public leaderboard entry from GET /member/top-users (no private fields). */
+export interface TopMember {
+  _id: string;
+  memberNick: string;
+  memberImage?: string;
+  memberPoint: number;
+}
+
 /** The backend sets the `accessToken` cookie (httpOnly); only the member is returned. */
 export interface AuthResponse {
   member: Member;

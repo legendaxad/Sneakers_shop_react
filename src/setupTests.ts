@@ -10,6 +10,20 @@ afterEach(() => {
 
 // jsdom does not implement these browser APIs used by the UI.
 window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
+URL.createObjectURL = vi.fn(() => 'blob:preview') as unknown as typeof URL.createObjectURL;
+URL.revokeObjectURL = vi.fn() as unknown as typeof URL.revokeObjectURL;
+if (!window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
 
 class IntersectionObserverStub {
   observe() {}

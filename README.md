@@ -33,9 +33,10 @@ React 19 + TypeScript + Vite + Material UI storefront for the MultiShop Express/
 ```text
 src/
   index.tsx            entry: ThemeProvider, CssBaseline, router
-  app/                 App (routes, session restore), store (auth, cart, notices), hooks, MaterialTheme
-  components/          layout (Header, Footer, Layout) and common UI (ProductCard, AddressForm, ...)
-  pages/               home, shop, product, auth, cart, checkout, profile, orders, not-found
+  app/                 App (routes, session restore), store (auth, cart, wishlist, recently viewed, notices), hooks, MaterialTheme
+  components/          layout (Header, Footer, Layout) and common UI (ProductCard, AddressForm, Reveal, ...)
+  data/                local content: categories presentation, Journal articles (not from a CMS)
+  pages/               home (sections), shop, product, auth, cart, checkout, profile, orders, wishlist, blog, not-found
   services/api.ts      all HTTP calls (axios, withCredentials) and error normalisation
   types/               API data types
   utils/               formatting, order and address helpers
@@ -48,3 +49,10 @@ public/                icons/, img/, robots.txt
 - Customer auth uses the backend's httpOnly `accessToken` cookie; the app never stores tokens.
 - Prices, stock and shipping are calculated by the backend when an order is placed; the cart only shows estimates.
 - Shoe sizes travel with each cart line and order item; stock (`productLeftCount`) is shared across sizes.
+- Homepage data is live: category counts (`/product/count`), most viewed (`/product/all?order=productViews`,
+  real view counts recorded once per logged-in member), top customers (`/member/top-users`, public fields only).
+- Wishlist and recently viewed are stored in this browser (localStorage) and loaded with `/product/all?ids=…`,
+  which does not record product views.
+- Signup accepts an optional profile photo (`multipart/form-data`, JPG/PNG/WebP/GIF up to 5 MB).
+- Animations use framer-motion with `MotionConfig reducedMotion="user"`; CSS transitions are disabled for
+  `prefers-reduced-motion: reduce`.

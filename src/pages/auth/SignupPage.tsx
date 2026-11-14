@@ -5,6 +5,7 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { Alert, Button, Paper, TextField, Typography } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import { AvatarPicker } from '../../components/common/AvatarPicker';
 import { useDocumentTitle } from '../../app/hooks';
 import { useAuthStore, useNoticeStore } from '../../app/store';
 import { getApiErrorMessage, memberApi } from '../../services/api';
@@ -34,6 +35,7 @@ export function SignupPage() {
   const setMember = useAuthStore((state) => state.setMember);
   const notify = useNoticeStore((state) => state.notify);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<File | undefined>();
   const {
     register,
     handleSubmit,
@@ -48,13 +50,16 @@ export function SignupPage() {
   const onSubmit = async (values: SignupFormValues) => {
     setServerError(null);
     try {
-      const created = await memberApi.signup({
-        memberNick: values.memberNick,
-        memberPhone: values.memberPhone,
-        memberPassword: values.memberPassword,
-        memberAddress: values.memberAddress || undefined,
-        memberDesc: values.memberDesc || undefined,
-      });
+      const created = await memberApi.signup(
+        {
+          memberNick: values.memberNick,
+          memberPhone: values.memberPhone,
+          memberPassword: values.memberPassword,
+          memberAddress: values.memberAddress || undefined,
+          memberDesc: values.memberDesc || undefined,
+        },
+        photo,
+      );
       setMember(created);
       notify(`Welcome to MULTI-SHOP, ${created.memberNick}!`, 'success');
       navigate(redirectTo, { replace: true });
@@ -76,6 +81,9 @@ export function SignupPage() {
             {serverError}
           </Alert>
         )}
+        <div className="span-2">
+          <AvatarPicker file={photo} onChange={setPhoto} disabled={isSubmitting} />
+        </div>
         <TextField
           label="Nickname"
           autoComplete="username"

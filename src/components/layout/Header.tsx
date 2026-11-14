@@ -15,6 +15,7 @@ import {
   ListItemText,
   Stack,
   Toolbar,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -27,12 +28,15 @@ import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
 import LoginIcon from '@mui/icons-material/Login';
 import PersonAddAltIcon from '@mui/icons-material/PersonAddAlt';
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
+import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
 import { memberApi } from '../../services/api';
-import { selectCartCount, useAuthStore, useCartStore, useNoticeStore } from '../../app/store';
+import { selectCartCount, useAuthStore, useCartStore, useNoticeStore, useWishlistStore } from '../../app/store';
 
 const navItems = [
   { label: 'Home', path: '/', icon: HomeOutlinedIcon },
   { label: 'Shop', path: '/shop', icon: StorefrontOutlinedIcon },
+  { label: 'Journal', path: '/blog', icon: ArticleOutlinedIcon },
   { label: 'Orders', path: '/orders', icon: ReceiptLongOutlinedIcon },
 ];
 
@@ -40,6 +44,7 @@ export function Header() {
   const member = useAuthStore((state) => state.member);
   const clearMember = useAuthStore((state) => state.clearMember);
   const cartCount = useCartStore(selectCartCount);
+  const wishlistCount = useWishlistStore((state) => state.ids.length);
   const notify = useNoticeStore((state) => state.notify);
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -79,6 +84,18 @@ export function Header() {
           </nav>
 
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Tooltip title="Wishlist">
+              <IconButton
+                component={Link}
+                to="/wishlist"
+                aria-label={`Wishlist, ${wishlistCount} saved`}
+                sx={{ border: '1px solid', borderColor: 'divider', display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                <Badge badgeContent={wishlistCount} color="primary" max={99}>
+                  <FavoriteBorderIcon fontSize="small" />
+                </Badge>
+              </IconButton>
+            </Tooltip>
             <Button
               component={Link}
               to="/cart"
@@ -171,6 +188,14 @@ export function Header() {
                 </Badge>
               </ListItemIcon>
               <ListItemText primary="Cart" />
+            </ListItemButton>
+            <ListItemButton component={NavLink} to="/wishlist" className="ms-drawer-link" onClick={() => setDrawerOpen(false)}>
+              <ListItemIcon>
+                <Badge badgeContent={wishlistCount} color="primary">
+                  <FavoriteBorderIcon />
+                </Badge>
+              </ListItemIcon>
+              <ListItemText primary="Wishlist" />
             </ListItemButton>
           </List>
           <Divider />

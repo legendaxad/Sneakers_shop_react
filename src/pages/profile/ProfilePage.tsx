@@ -10,6 +10,8 @@ import { useDocumentTitle } from '../../app/hooks';
 import { useAuthStore, useNoticeStore } from '../../app/store';
 import { getApiErrorMessage, memberApi } from '../../services/api';
 import type { DeliveryAddress, Member } from '../../types/member';
+import { DEFAULT_AVATAR } from '../../constants';
+import { validateImageFile } from '../../utils/image';
 import '../../css/userPage.css';
 
 interface AccountForm {
@@ -20,7 +22,6 @@ interface AccountForm {
 }
 
 const PHONE_PATTERN = /^\+?[0-9\s\-()]{7,20}$/;
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export function ProfilePage() {
   useDocumentTitle('Profile');
@@ -131,12 +132,9 @@ export function ProfilePage() {
 
   const onFileChange = (selected?: File) => {
     if (!selected) return;
-    if (!selected.type.startsWith('image/')) {
-      setAccountMessage({ type: 'error', text: 'Please choose an image file.' });
-      return;
-    }
-    if (selected.size > MAX_IMAGE_BYTES) {
-      setAccountMessage({ type: 'error', text: 'Please choose an image under 5 MB.' });
+    const problem = validateImageFile(selected);
+    if (problem) {
+      setAccountMessage({ type: 'error', text: problem });
       return;
     }
     setAccountMessage(null);
@@ -149,7 +147,7 @@ export function ProfilePage() {
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}>
           <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
             <div className="ms-avatar-upload">
-              {preview ? <img src={preview} alt="New profile preview" /> : <SafeImage src={member.memberImage} alt={member.memberNick} />}
+              {preview ? <img src={preview} alt="New profile preview" /> : <SafeImage src={member.memberImage} fallback={DEFAULT_AVATAR} alt={member.memberNick} />}
               <IconButton component="label" className="ms-avatar-upload-button" aria-label="Change profile photo">
                 <PhotoCameraOutlinedIcon sx={{ fontSize: 16 }} />
                 <input type="file" accept="image/*" hidden onChange={(event) => onFileChange(event.target.files?.[0])} />

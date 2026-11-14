@@ -38,4 +38,6 @@ export interface ProductFilters {
   order?: ProductOrder;
   productCollection?: ProductCollection;
   search?: string;
+  /** Comma-separated product ids (max 50); used for wishlist / recently viewed. */
+  ids?: string;
 }

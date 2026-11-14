@@ -1,6 +1,6 @@
 import { AxiosError, AxiosHeaders } from 'axios';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, getApiErrorMessage, orderApi, productApi, toApiError } from './api';
+import { api, ApiError, getApiErrorMessage, memberApi, orderApi, productApi, toApiError } from './api';
 import { useAuthStore } from '../app/store';
 
 const axiosError = (status: number, data: unknown, url = '/x') =>
@@ -52,5 +52,39 @@ describe('API error handling', () => {
     };
     await expect(rejected.handlers[0].rejected(axiosError(401, { message: 'You are not authenticated!' }, '/order/all'))).rejects.toBeInstanceOf(ApiError);
     expect(useAuthStore.getState().status).toBe('guest');
+  });
+});
+
+describe('new API helpers', () => {
+  it('sends signup as multipart/form-data when a photo is attached', async () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: { member: { memberNick: 'x' } } });
+    const photo = new File(['png'], 'me.png', { type: 'image/png' });
+    await memberApi.signup({ memberNick: 'x', memberPhone: '01012345678', memberPassword: 'secret12', memberAddress: '' }, photo);
+    const [url, body] = post.mock.calls[0];
+    expect(url).toBe('/member/signup');
+    expect(body).toBeInstanceOf(FormData);
+    const form = body as FormData;
+    expect(form.get('memberImage')).toBe(photo);
+    expect(form.get('memberNick')).toBe('x');
+    expect(form.has('memberAddress')).toBe(false);
+  });
+
+  it('sends JSON signup without a photo', async () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: { member: { memberNick: 'x' } } });
+    await memberApi.signup({ memberNick: 'x', memberPhone: '01012345678', memberPassword: 'secret12' });
+    expect(post.mock.calls[0][1]).not.toBeInstanceOf(FormData);
+  });
+
+  it('loads products by id in the requested order via /product/all (no view tracking)', async () => {
+    const get = vi.spyOn(api, 'get').mockResolvedValue({ data: [{ _id: 'b' }, { _id: 'a' }] });
+    const products = await productApi.getProductsByIds(['a', 'b', 'gone', 'a']);
+    expect(get).toHaveBeenCalledWith('/product/all', { params: { ids: 'a,b,gone', page: 1, limit: 50 } });
+    expect(products.map((p) => p._id)).toEqual(['a', 'b']);
+  });
+
+  it('skips the request when there are no ids', async () => {
+    const get = vi.spyOn(api, 'get');
+    await expect(productApi.getProductsByIds([])).resolves.toEqual([]);
+    expect(get).not.toHaveBeenCalled();
   });
 });

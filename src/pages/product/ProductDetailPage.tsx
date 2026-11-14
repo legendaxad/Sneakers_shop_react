@@ -19,7 +19,8 @@ import { EmptyState, ErrorState } from '../../components/common/PageStatus';
 import { QuantityStepper } from '../../components/common/QuantityStepper';
 import { SafeImage } from '../../components/common/SafeImage';
 import { useDocumentTitle } from '../../app/hooks';
-import { productQuantityInCart, useCartStore, useNoticeStore } from '../../app/store';
+import { productQuantityInCart, useCartStore, useNoticeStore, useRecentlyViewedStore } from '../../app/store';
+import { WishlistButton } from '../../components/common/WishlistButton';
 import { MAX_ITEM_QUANTITY } from '../../constants';
 import { productApi, toApiError } from '../../services/api';
 import type { Product } from '../../types/product';
@@ -33,6 +34,8 @@ export function ProductDetailPage() {
   const addItem = useCartStore((state) => state.addItem);
   const cartItems = useCartStore((state) => state.items);
   const notify = useNoticeStore((state) => state.notify);
+  const addViewed = useRecentlyViewedStore((state) => state.addViewed);
+  const removeViewed = useRecentlyViewedStore((state) => state.removeViewed);
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [selectedSize, setSelectedSize] = useState<number | null>(null);
   const [sizeError, setSizeError] = useState(false);
@@ -49,13 +52,17 @@ export function ProductDetailPage() {
     setQuantity(1);
     setActiveImage(0);
     try {
-      setState({ status: 'ready', product: await productApi.getProduct(id) });
+      const loaded = await productApi.getProduct(id);
+      setState({ status: 'ready', product: loaded });
+      addViewed(loaded._id);
     } catch (error) {
       const apiError = toApiError(error);
-      if (apiError.status === 404 || apiError.status === 400) setState({ status: 'not-found' });
-      else setState({ status: 'error', message: apiError.message });
+      if (apiError.status === 404 || apiError.status === 400) {
+        removeViewed(id);
+        setState({ status: 'not-found' });
+      } else setState({ status: 'error', message: apiError.message });
     }
-  }, [id]);
+  }, [id, addViewed, removeViewed]);
 
   useEffect(() => {
     void load();
@@ -201,6 +208,7 @@ export function ProductDetailPage() {
             >
               {soldOut ? 'Sold out' : 'Add to cart'}
             </Button>
+            <WishlistButton productId={item._id} productName={item.productName} variant="outlined" />
           </Stack>
           {!soldOut && available <= 0 && (
             <Alert severity="info" sx={{ mt: 2 }}>

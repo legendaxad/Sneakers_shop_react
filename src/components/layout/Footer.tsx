@@ -15,7 +15,9 @@ const shopLinks = [
 const accountLinks = [
   { label: 'My profile', to: '/profile' },
   { label: 'Order status', to: '/orders' },
+  { label: 'Wishlist', to: '/wishlist' },
   { label: 'Cart', to: '/cart' },
+  { label: 'The Journal', to: '/blog' },
   { label: 'Create account', to: '/signup' },
 ];
 

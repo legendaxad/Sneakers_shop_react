@@ -3,6 +3,9 @@ export const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)
 /** Local fallback used when a product or profile image is missing or fails to load. */
 export const PLACEHOLDER_IMAGE = '/img/placeholder-sneaker.svg';
 
+/** Shown for customers without a profile photo. */
+export const DEFAULT_AVATAR = '/icons/default-user.svg';
+
 export const HERO_IMAGE =
   'https://images.unsplash.com/photo-1543508282-6319a3e2621f?auto=format&fit=crop&w=1200&q=80';
 

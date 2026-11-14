@@ -51,6 +51,22 @@
   color: #ffffff !important;
 }
 
+.ms-avatar-picker {
+  padding: 16px;
+  border-radius: var(--ms-radius-md);
+  background: #fafaf9;
+  border: 1px dashed var(--ms-line);
+}
+
+.ms-avatar-preview {
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px var(--ms-line);
+}
+
 .ms-profile-section {
   padding: 24px;
 }
