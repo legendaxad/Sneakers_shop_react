@@ -1,32 +1,50 @@
-# React + TypeScript + Vite
+# MULTI-SHOP — Customer Storefront
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React 19 + TypeScript + Vite + Material UI storefront for the MultiShop Express/MongoDB backend (`../multi_shop`).
 
-Currently, two official plugins are available:
+## Run locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Start the backend (in `../multi_shop`): `npm run dev` — listens on `PORT` (3003 by default in this setup).
+2. Start the shop (here): `npm install` then `npm run dev`.
+3. Open **http://localhost:5173** — use exactly this origin. The backend's CORS allows only `CLIENT_ORIGIN`
+   (default `http://localhost:5173`), so `127.0.0.1` or a LAN address will be blocked.
 
-## React Compiler
+## Environment variables (names only)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Variable | Where | Purpose |
+| --- | --- | --- |
+| `VITE_API_URL` | frontend (optional) | Backend base URL, default `http://localhost:3003` |
+| `MONGO_URL`, `PORT`, `SESSION_SECRET`, `SECRET_TOKEN` | backend | Database, port, admin session and customer JWT secrets |
+| `CLIENT_ORIGIN` | backend (optional) | Allowed shop origin for CORS, default `http://localhost:5173` |
+| `NODE_ENV` | backend (optional) | `production` adds `Secure` to the customer cookie (requires HTTPS) |
 
-## Expanding the Oxlint configuration
+## Scripts
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Vite dev server |
+| `npm run typecheck` | TypeScript project check |
+| `npm run lint` | Oxlint |
+| `npm test` | Vitest + Testing Library |
+| `npm run build` | Typecheck and production build to `dist/` |
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+## Structure
+
+```text
+src/
+  index.tsx            entry: ThemeProvider, CssBaseline, router
+  app/                 App (routes, session restore), store (auth, cart, notices), hooks, MaterialTheme
+  components/          layout (Header, Footer, Layout) and common UI (ProductCard, AddressForm, ...)
+  pages/               home, shop, product, auth, cart, checkout, profile, orders, not-found
+  services/api.ts      all HTTP calls (axios, withCredentials) and error normalisation
+  types/               API data types
+  utils/               formatting, order and address helpers
+  css/                 page-level stylesheets
+public/                icons/, img/, robots.txt
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## How it talks to the backend
+
+- Customer auth uses the backend's httpOnly `accessToken` cookie; the app never stores tokens.
+- Prices, stock and shipping are calculated by the backend when an order is placed; the cart only shows estimates.
+- Shoe sizes travel with each cart line and order item; stock (`productLeftCount`) is shared across sizes.
