@@ -1,85 +1,283 @@
-import { useEffect, useState } from 'react';
-import { PackageCheck } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { orderApi } from '../../services/api';
-import { useAuthStore } from '../../store/authStore';
-import type { Order } from '../../types/order';
-import { formatDate, formatPrice, resolveImageUrl } from '../../utils/format';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Divider,
+  Skeleton,
+  Stack,
+  Tab,
+  Tabs,
+  Typography,
+} from '@mui/material';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
+import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
+import { EmptyState, ErrorState } from '../../components/common/PageStatus';
+import { SafeImage } from '../../components/common/SafeImage';
+import { useDocumentTitle } from '../../app/hooks';
+import { useNoticeStore } from '../../app/store';
+import { ORDERS_PER_PAGE } from '../../constants';
+import { getApiErrorMessage, orderApi } from '../../services/api';
+import { OrderStatus, type Order } from '../../types/order';
+import { formatAddress, formatDate, formatPrice } from '../../utils/format';
+import { buildOrderLines, orderActions, orderStatusLabel } from '../../utils/order';
+import '../../css/order.css';
+
+const tabs: { label: string; value: OrderStatus | 'ALL' }[] = [
+  { label: 'All', value: 'ALL' },
+  { label: 'Awaiting confirmation', value: OrderStatus.PAUSE },
+  { label: 'Processing', value: OrderStatus.PROCESS },
+  { label: 'Completed', value: OrderStatus.FINISH },
+  { label: 'Cancelled', value: OrderStatus.DELETED },
+];
+
+const statusColor: Record<OrderStatus, 'default' | 'warning' | 'info' | 'success'> = {
+  [OrderStatus.PAUSE]: 'warning',
+  [OrderStatus.PROCESS]: 'info',
+  [OrderStatus.FINISH]: 'success',
+  [OrderStatus.DELETED]: 'default',
+};
+
+interface PendingAction {
+  order: Order;
+  status: OrderStatus;
+  label: string;
+}
 
 export function OrdersPage() {
-  const member = useAuthStore((state) => state.member);
+  useDocumentTitle('Orders');
+  const location = useLocation();
+  const placedOrderId = (location.state as { placedOrderId?: string } | null)?.placedOrderId;
+  const notify = useNoticeStore((state) => state.notify);
+  const [tab, setTab] = useState<OrderStatus | 'ALL'>('ALL');
   const [orders, setOrders] = useState<Order[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
+  const [updating, setUpdating] = useState(false);
+
+  const fetchPage = useCallback(
+    async (nextPage: number) => {
+      const status = tab === 'ALL' ? undefined : tab;
+      const list = await orderApi.getOrders(nextPage, ORDERS_PER_PAGE, status);
+      setHasMore(list.length === ORDERS_PER_PAGE);
+      setPage(nextPage);
+      return list;
+    },
+    [tab],
+  );
+
+  const loadFirstPage = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setOrders(await fetchPage(1));
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchPage]);
 
   useEffect(() => {
-    if (!member) {
-      return;
+    void loadFirstPage();
+  }, [loadFirstPage]);
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const next = await fetchPage(page + 1);
+      setOrders((current) => [...current, ...next.filter((order) => !current.some((existing) => existing._id === order._id))]);
+    } catch (err) {
+      notify(getApiErrorMessage(err), 'error');
+    } finally {
+      setLoadingMore(false);
     }
+  };
 
-    const loadOrders = async () => {
-      try {
-        const nextOrders = await orderApi.getOrders(1, 10);
-        setOrders(nextOrders);
-      } catch {
-        setOrders([]);
-      }
-    };
-
-    void loadOrders();
-  }, [member]);
-
-  if (!member) {
-    return (
-      <div className="rounded-[28px] bg-white p-10 text-center shadow-sm ring-1 ring-stone-200">
-        <h2 className="text-3xl font-black tracking-[-0.04em] text-stone-900">Log in to view your orders</h2>
-        <Link to="/login" className="mt-6 inline-flex rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white">
-          Go to login
-        </Link>
-      </div>
-    );
-  }
-
-  if (!orders.length) {
-    return (
-      <div className="rounded-[28px] bg-white p-10 text-center shadow-sm ring-1 ring-stone-200">
-        <PackageCheck className="mx-auto h-12 w-12 text-stone-400" />
-        <h2 className="mt-4 text-3xl font-black tracking-[-0.04em] text-stone-900">No orders yet</h2>
-        <p className="mt-3 text-stone-600">Your latest purchases will appear here after checkout.</p>
-      </div>
-    );
-  }
+  const confirmAction = async () => {
+    if (!pending) return;
+    setUpdating(true);
+    try {
+      await orderApi.updateOrder(pending.order._id, pending.status);
+      notify(`Order #${pending.order._id.slice(-6)} updated: ${orderStatusLabel[pending.status]}.`, 'success');
+      setPending(null);
+      await loadFirstPage();
+    } catch (err) {
+      notify(getApiErrorMessage(err), 'error');
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      {orders.map((order) => (
-        <article key={order._id} className="rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-stone-200">
-          <div className="flex flex-col gap-3 border-b border-stone-200 pb-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.28em] text-stone-500">Order #{order._id.slice(-6)}</p>
-              <h3 className="mt-2 text-2xl font-black tracking-[-0.04em] text-stone-900">{formatPrice(order.orderTotal)}</h3>
-            </div>
-            <div className="text-sm text-stone-600">
-              <span className="rounded-full bg-stone-100 px-3 py-1.5 font-medium text-stone-700">{order.orderStatus}</span>
-              <p className="mt-2">Placed {formatDate(order.createdAt)}</p>
-            </div>
-          </div>
+    <Stack spacing={3}>
+      <div>
+        <span className="ms-eyebrow">Account</span>
+        <Typography variant="h3" component="h1" sx={{ mt: 1 }}>
+          Your orders
+        </Typography>
+      </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {order.productData?.map((product, index) => (
-              <div key={`${order._id}-${product._id}`} className="flex items-center gap-4 rounded-[20px] border border-stone-200 p-3">
-                <img src={resolveImageUrl(product.productImages?.[0])} alt={product.productName} className="h-20 w-20 rounded-[16px] object-cover" />
-                <div className="flex-1">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-stone-500">{product.productBrand}</p>
-                  <h4 className="mt-2 text-lg font-semibold text-stone-900">{product.productName}</h4>
-                  <p className="mt-1 text-sm text-stone-600">
-                    {order.orderItems?.[index]?.itemQuantity ?? 1} item(s)
-                  </p>
+      {placedOrderId && (
+        <Alert severity="success">
+          Thank you! Your order #{placedOrderId.slice(-6)} was placed. Confirm it below once you are ready, or cancel it while it is awaiting
+          confirmation.
+        </Alert>
+      )}
+
+      <Box className="ms-surface" sx={{ px: 1 }}>
+        <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto" aria-label="Filter orders by status">
+          {tabs.map((item) => (
+            <Tab key={item.value} label={item.label} value={item.value} />
+          ))}
+        </Tabs>
+      </Box>
+
+      {error ? (
+        <ErrorState message={error} onRetry={() => void loadFirstPage()} />
+      ) : loading ? (
+        <Stack spacing={3}>
+          {Array.from({ length: 2 }).map((_, index) => (
+            <Skeleton key={index} variant="rounded" height={240} sx={{ borderRadius: '28px' }} />
+          ))}
+        </Stack>
+      ) : orders.length === 0 ? (
+        <EmptyState
+          icon={ReceiptLongOutlinedIcon}
+          title={tab === 'ALL' ? 'No orders yet' : 'No orders here'}
+          description={tab === 'ALL' ? 'Your latest purchases will appear here after checkout.' : 'No orders match this status.'}
+          action={
+            <Button component={Link} to="/shop" variant="contained">
+              Start shopping
+            </Button>
+          }
+        />
+      ) : (
+        <Stack spacing={3}>
+          {orders.map((order) => {
+            const lines = buildOrderLines(order);
+            const itemsTotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+            const address = formatAddress(order.orderAddress);
+            return (
+              <article key={order._id} className="ms-surface ms-order-card" aria-label={`Order ${order._id.slice(-6)}`}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', pb: 2 }}>
+                  <div>
+                    <span className="ms-eyebrow">Order #{order._id.slice(-6)}</span>
+                    <Typography variant="h4" component="p" sx={{ mt: 1 }}>
+                      {formatPrice(order.orderTotal)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Items {formatPrice(itemsTotal)} · Delivery {order.orderDelivery ? formatPrice(order.orderDelivery) : 'Free'}
+                    </Typography>
+                  </div>
+                  <Stack spacing={1} sx={{ alignItems: { md: 'flex-end' } }}>
+                    <Chip label={orderStatusLabel[order.orderStatus] ?? order.orderStatus} color={statusColor[order.orderStatus] ?? 'default'} />
+                    <Typography variant="body2" color="text.secondary">
+                      Placed {formatDate(order.createdAt)}
+                    </Typography>
+                  </Stack>
+                </Stack>
+                <Divider />
+
+                <div className="ms-order-lines" style={{ marginTop: 24 }}>
+                  {lines.map(({ item, product, lineTotal }) => (
+                    <div key={item._id} className="ms-mini-line">
+                      <SafeImage src={product?.productImages?.[0]} alt={product?.productName ?? 'Product'} />
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        {product?.productBrand && (
+                          <span className="ms-eyebrow" style={{ letterSpacing: '0.18em' }}>
+                            {product.productBrand}
+                          </span>
+                        )}
+                        {product ? (
+                          <Typography
+                            component={Link}
+                            to={`/product/${product._id}`}
+                            sx={{ mt: 0.5, fontWeight: 600, display: 'block', color: 'inherit', textDecoration: 'none' }}
+                            noWrap
+                          >
+                            {product.productName}
+                          </Typography>
+                        ) : (
+                          <Typography sx={{ mt: 0.5, fontWeight: 600 }}>Product no longer available</Typography>
+                        )}
+                        <Typography variant="body2" color="text.secondary">
+                          {item.itemSize ? `Size EU ${item.itemSize} · ` : ''}
+                          {item.itemQuantity} × {formatPrice(item.itemPrice)}
+                        </Typography>
+                      </Box>
+                      <Typography sx={{ fontWeight: 600 }}>{formatPrice(lineTotal)}</Typography>
+                    </div>
+                  ))}
                 </div>
-                <p className="font-semibold text-stone-900">{formatPrice(product.productPrice)}</p>
-              </div>
-            ))}
-          </div>
-        </article>
-      ))}
-    </div>
+
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: { md: 'flex-end' }, justifyContent: 'space-between', mt: 3 }}>
+                  <div className="ms-order-address">
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+                      <LocationOnOutlinedIcon fontSize="small" />
+                      <div>
+                        {address.length ? (
+                          address.map((line) => <div key={line}>{line}</div>)
+                        ) : (
+                          <span>No delivery address recorded for this order.</span>
+                        )}
+                      </div>
+                    </Stack>
+                  </div>
+                  <Stack direction="row" spacing={1}>
+                    {orderActions[order.orderStatus]?.map((action) => (
+                      <Button
+                        key={action.status}
+                        variant={action.tone === 'primary' ? 'contained' : 'outlined'}
+                        onClick={() => setPending({ order, status: action.status, label: action.label })}
+                      >
+                        {action.label}
+                      </Button>
+                    ))}
+                  </Stack>
+                </Stack>
+              </article>
+            );
+          })}
+          {hasMore && (
+            <Button variant="outlined" onClick={() => void loadMore()} disabled={loadingMore} sx={{ alignSelf: 'center' }}>
+              {loadingMore ? 'Loading…' : 'Load more orders'}
+            </Button>
+          )}
+        </Stack>
+      )}
+
+      <Dialog open={!!pending} onClose={() => !updating && setPending(null)} aria-labelledby="order-action-title">
+        <DialogTitle id="order-action-title">{pending?.label}?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {pending?.status === OrderStatus.DELETED
+              ? 'This cancels the order and returns the items to stock. This cannot be undone.'
+              : pending?.status === OrderStatus.PROCESS
+                ? 'Confirming sends the order for processing. After this it can no longer be cancelled.'
+                : 'Mark this order as received to complete it.'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setPending(null)} disabled={updating}>
+            Keep as is
+          </Button>
+          <Button variant="contained" onClick={() => void confirmAction()} disabled={updating}>
+            {updating ? 'Updating…' : pending?.label}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
   );
 }

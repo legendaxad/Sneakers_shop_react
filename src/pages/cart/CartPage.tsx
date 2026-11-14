@@ -1,86 +1,132 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Minus, Plus, Trash2 } from 'lucide-react';
-import { useCartStore } from '../../store/cartStore';
-import { formatPrice, resolveImageUrl } from '../../utils/format';
+import { Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
+import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
+import { EmptyState } from '../../components/common/PageStatus';
+import { QuantityStepper } from '../../components/common/QuantityStepper';
+import { SafeImage } from '../../components/common/SafeImage';
+import { useDocumentTitle } from '../../app/hooks';
+import { productQuantityInCart, selectCartCount, selectCartSubtotal, useCartStore } from '../../app/store';
+import { FREE_SHIPPING_THRESHOLD, MAX_ITEM_QUANTITY } from '../../constants';
+import { formatPrice } from '../../utils/format';
+import { calculateShipping } from '../../utils/order';
+import '../../css/order.css';
 
 export function CartPage() {
+  useDocumentTitle('Cart');
   const navigate = useNavigate();
   const items = useCartStore((state) => state.items);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const removeItem = useCartStore((state) => state.removeItem);
-  const subtotal = useCartStore((state) => state.subtotal());
-  const totalItems = useCartStore((state) => state.totalItems());
+  const subtotal = useCartStore(selectCartSubtotal);
+  const totalItems = useCartStore(selectCartCount);
+  const shipping = calculateShipping(subtotal);
 
   if (!items.length) {
     return (
-      <div className="rounded-[28px] bg-white p-10 text-center shadow-sm ring-1 ring-stone-200">
-        <h2 className="text-3xl font-black tracking-[-0.04em] text-stone-900">Your cart is empty</h2>
-        <p className="mt-3 text-stone-600">Browse the collection to add your next pair.</p>
-        <Link to="/shop" className="mt-6 inline-flex rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white">
-          Explore sneakers
-        </Link>
-      </div>
+      <EmptyState
+        icon={ShoppingBagOutlinedIcon}
+        title="Your cart is empty"
+        description="Browse the collection to add your next pair."
+        action={
+          <Button component={Link} to="/shop" variant="contained">
+            Explore sneakers
+          </Button>
+        }
+      />
     );
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-      <div className="space-y-5">
-        {items.map((item) => (
-          <div key={item.productId} className="flex flex-col gap-4 rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-stone-200 sm:flex-row">
-            <img src={resolveImageUrl(item.productImages?.[0])} alt={item.productName} className="h-32 w-full rounded-[18px] object-cover sm:w-40" />
-            <div className="flex flex-1 flex-col justify-between gap-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">{item.productBrand}</p>
-                  <h3 className="mt-2 text-xl font-semibold text-stone-900">{item.productName}</h3>
-                </div>
-                <button type="button" onClick={() => removeItem(item.productId)} className="rounded-full p-2 text-stone-500 hover:bg-stone-100 hover:text-stone-900">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
+    <div className="ms-two-column">
+      <Stack spacing={2.5} component="section" aria-label="Cart items">
+        <Typography variant="h3" component="h1">
+          Your cart
+        </Typography>
+        {items.map((item) => {
+          const maxForLine = Math.max(Math.min(item.stock - productQuantityInCart(items, item.productId, item.key), MAX_ITEM_QUANTITY), 1);
+          return (
+            <article key={item.key} className="ms-surface ms-line-item">
+              <Link to={`/product/${item.productId}`}>
+                <SafeImage src={item.productImage} alt={item.productName} className="ms-line-item-image" />
+              </Link>
+              <Stack sx={{ justifyContent: 'space-between', flex: 1 }} spacing={2}>
+                <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <div>
+                    <span className="ms-eyebrow" style={{ letterSpacing: '0.2em' }}>
+                      {item.productBrand}
+                    </span>
+                    <Typography
+                      component={Link}
+                      to={`/product/${item.productId}`}
+                      variant="h5"
+                      sx={{ mt: 1, display: 'block', color: 'inherit', textDecoration: 'none' }}
+                    >
+                      {item.productName}
+                    </Typography>
+                    <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                      {item.size !== null && <Chip size="small" label={`Size EU ${item.size}`} />}
+                      <Chip size="small" variant="outlined" label={`${formatPrice(item.productPrice)} each`} />
+                    </Stack>
+                  </div>
+                  <Tooltip title="Remove">
+                    <IconButton onClick={() => removeItem(item.key)} aria-label={`Remove ${item.productName}${item.size ? ` size ${item.size}` : ''}`}>
+                      <DeleteOutlineIcon />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+                <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                  <QuantityStepper
+                    value={item.quantity}
+                    max={maxForLine}
+                    onChange={(value) => updateQuantity(item.key, value)}
+                    label={`quantity of ${item.productName}`}
+                  />
+                  <Typography variant="h6" component="p">
+                    {formatPrice(item.productPrice * item.quantity)}
+                  </Typography>
+                </Stack>
+              </Stack>
+            </article>
+          );
+        })}
+      </Stack>
 
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-stone-50 p-1">
-                  <button type="button" onClick={() => updateQuantity(item.productId, item.quantity - 1)} className="p-2 text-stone-700">
-                    <Minus className="h-4 w-4" />
-                  </button>
-                  <span className="min-w-8 text-center text-sm font-medium text-stone-900">{item.quantity}</span>
-                  <button type="button" onClick={() => updateQuantity(item.productId, item.quantity + 1)} className="p-2 text-stone-700">
-                    <Plus className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <p className="text-lg font-semibold text-stone-900">{formatPrice(item.productPrice * item.quantity)}</p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <aside className="rounded-[28px] bg-stone-900 p-6 text-white shadow-[0_30px_60px_rgba(24,24,27,0.28)]">
-        <p className="text-[10px] uppercase tracking-[0.26em] text-stone-300">Summary</p>
-        <h3 className="mt-4 text-3xl font-black tracking-[-0.04em]">{totalItems} item{totalItems > 1 ? 's' : ''}</h3>
-
-        <div className="mt-8 space-y-4 text-sm text-stone-200">
-          <div className="flex items-center justify-between">
+      <Box component="aside" className="ms-dark-panel ms-sticky" sx={{ p: 3 }} aria-label="Order summary">
+        <span className="ms-eyebrow">Summary</span>
+        <Typography variant="h3" component="p" sx={{ mt: 2 }}>
+          {totalItems} item{totalItems === 1 ? '' : 's'}
+        </Typography>
+        <Stack spacing={2} sx={{ mt: 4 }}>
+          <div className="ms-summary-row">
             <span>Subtotal</span>
             <span>{formatPrice(subtotal)}</span>
           </div>
-          <div className="flex items-center justify-between">
+          <div className="ms-summary-row">
             <span>Shipping</span>
-            <span>{subtotal >= 100 ? 'Free' : formatPrice(5)}</span>
+            <span>{shipping === 0 ? 'Free' : formatPrice(shipping)}</span>
           </div>
-          <div className="flex items-center justify-between border-t border-stone-700 pt-4 text-base font-semibold text-white">
-            <span>Total</span>
-            <span>{formatPrice(subtotal >= 100 ? subtotal : subtotal + 5)}</span>
+          <div className="ms-summary-row total">
+            <span>Estimated total</span>
+            <span>{formatPrice(subtotal + shipping)}</span>
           </div>
-        </div>
-
-        <button type="button" onClick={() => navigate('/checkout')} className="mt-8 inline-flex w-full items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-stone-900">
+        </Stack>
+        {shipping > 0 && (
+          <Typography variant="body2" sx={{ mt: 2, color: '#d6d3d1' }}>
+            Add {formatPrice(FREE_SHIPPING_THRESHOLD - subtotal)} more for free shipping.
+          </Typography>
+        )}
+        <Button
+          fullWidth
+          onClick={() => navigate('/checkout')}
+          sx={{ mt: 4, bgcolor: '#fff', color: 'text.primary', '&:hover': { bgcolor: '#f5f5f4' } }}
+        >
           Proceed to checkout
-        </button>
-      </aside>
+        </Button>
+        <Typography variant="caption" component="p" sx={{ mt: 2, color: '#a8a29e' }}>
+          Prices and availability are confirmed when you place your order.
+        </Typography>
+      </Box>
     </div>
   );
 }

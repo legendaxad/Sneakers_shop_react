@@ -1,93 +1,214 @@
-import { Menu, ShoppingBag, UserCircle2 } from 'lucide-react';
-import { Link, NavLink } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import {
+  AppBar,
+  Badge,
+  Box,
+  Button,
+  Container,
+  Divider,
+  Drawer,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Stack,
+  Toolbar,
+  Typography,
+} from '@mui/material';
+import MenuIcon from '@mui/icons-material/Menu';
+import CloseIcon from '@mui/icons-material/Close';
+import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
+import AccountCircleOutlinedIcon from '@mui/icons-material/AccountCircleOutlined';
+import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
+import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
+import LogoutIcon from '@mui/icons-material/Logout';
+import LoginIcon from '@mui/icons-material/Login';
+import PersonAddAltIcon from '@mui/icons-material/PersonAddAlt';
 import { memberApi } from '../../services/api';
-import { useAuthStore } from '../../store/authStore';
-import { useCartStore } from '../../store/cartStore';
+import { selectCartCount, useAuthStore, useCartStore, useNoticeStore } from '../../app/store';
 
 const navItems = [
-  { label: 'Home', path: '/' },
-  { label: 'Shop', path: '/shop' },
-  { label: 'Orders', path: '/orders' },
+  { label: 'Home', path: '/', icon: HomeOutlinedIcon },
+  { label: 'Shop', path: '/shop', icon: StorefrontOutlinedIcon },
+  { label: 'Orders', path: '/orders', icon: ReceiptLongOutlinedIcon },
 ];
 
 export function Header() {
   const member = useAuthStore((state) => state.member);
-  const clearAuth = useAuthStore((state) => state.clearAuth);
-  const totalItems = useCartStore((state) => state.totalItems());
+  const clearMember = useAuthStore((state) => state.clearMember);
+  const cartCount = useCartStore(selectCartCount);
+  const notify = useNoticeStore((state) => state.notify);
+  const navigate = useNavigate();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const signOut = async () => {
+    setDrawerOpen(false);
     try {
       await memberApi.logout();
     } catch {
-      // Ignore logout API errors and clear local session state.
+      // The local session is cleared regardless; the cookie expires on its own.
     }
-
-    clearAuth();
-    window.location.href = '/';
+    clearMember();
+    notify('You have been logged out.', 'info');
+    navigate('/');
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-stone-200 bg-white/90 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-900 text-xs font-bold text-white">
-            MS
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.26em] text-stone-500">Premium</p>
-            <h1 className="text-lg font-black tracking-[0.16em] text-stone-900">MULTI-SHOP</h1>
-          </div>
-        </Link>
-
-        <nav className="hidden items-center gap-8 md:flex">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                `text-sm font-medium transition ${isActive ? 'text-stone-950' : 'text-stone-600 hover:text-stone-900'}`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="flex items-center gap-3">
-          <button type="button" className="inline-flex items-center justify-center rounded-full border border-stone-200 p-2.5 md:hidden">
-            <Menu className="h-4 w-4 text-stone-700" />
-          </button>
-
-          <Link to="/cart" className="relative inline-flex items-center gap-2 rounded-full border border-stone-200 px-3 py-2 text-sm font-medium text-stone-700 hover:border-stone-300 hover:text-stone-900">
-            <ShoppingBag className="h-4 w-4" />
-            Cart
-            <span className="rounded-full bg-stone-900 px-1.5 py-0.5 text-[10px] font-bold text-white">
-              {totalItems}
+    <AppBar position="sticky" elevation={0} className="ms-navbar">
+      <Container maxWidth="lg">
+        <Toolbar disableGutters className="ms-navbar-inner">
+          <Link to="/" className="ms-logo" aria-label="MULTI-SHOP home">
+            <span className="ms-logo-mark">MS</span>
+            <span>
+              <span className="ms-logo-tag">Premium</span>
+              <Typography component="span" className="ms-logo-name" sx={{ display: 'block' }}>
+                MULTI-SHOP
+              </Typography>
             </span>
           </Link>
 
-          {member ? (
-            <div className="flex items-center gap-2">
-              <Link to="/profile" className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-2 text-sm font-medium text-stone-900">
-                <UserCircle2 className="h-4 w-4" />
-                {member.memberNick}
-              </Link>
-              <button type="button" onClick={signOut} className="rounded-full border border-stone-200 px-3 py-2 text-sm font-medium text-stone-700">
-                Log out
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Link to="/login" className="rounded-full border border-stone-200 px-3 py-2 text-sm font-medium text-stone-700">
-                Login
-              </Link>
-              <Link to="/signup" className="rounded-full bg-stone-900 px-3 py-2 text-sm font-medium text-white">
-                Sign up
-              </Link>
-            </div>
+          <nav className="ms-nav-links" aria-label="Main">
+            {navItems.map((item) => (
+              <NavLink key={item.path} to={item.path} end={item.path === '/'} className="ms-nav-link">
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Button
+              component={Link}
+              to="/cart"
+              variant="outlined"
+              aria-label={`Cart, ${cartCount} items`}
+              startIcon={
+                <Badge badgeContent={cartCount} color="primary" max={99} showZero={false}>
+                  <ShoppingBagOutlinedIcon fontSize="small" />
+                </Badge>
+              }
+              sx={{ px: { xs: 1.5, sm: 2 } }}
+            >
+              <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                Cart
+              </Box>
+            </Button>
+
+            <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 1 }}>
+              {member ? (
+                <>
+                  <Button
+                    component={Link}
+                    to="/profile"
+                    startIcon={<AccountCircleOutlinedIcon />}
+                    sx={{ bgcolor: '#f5f5f4', color: 'text.primary', '&:hover': { bgcolor: '#e7e5e4' } }}
+                  >
+                    {member.memberNick}
+                  </Button>
+                  <Button variant="outlined" onClick={() => void signOut()}>
+                    Log out
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button component={Link} to="/login" variant="outlined">
+                    Login
+                  </Button>
+                  <Button component={Link} to="/signup" variant="contained">
+                    Sign up
+                  </Button>
+                </>
+              )}
+            </Box>
+
+            <IconButton
+              sx={{ display: { md: 'none' }, border: '1px solid', borderColor: 'divider' }}
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open menu"
+            >
+              <MenuIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+        </Toolbar>
+      </Container>
+
+      <Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+        <Box sx={{ width: 290, pt: 1 }} role="navigation" aria-label="Mobile">
+          <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1 }}>
+            <Typography className="ms-logo-name">MULTI-SHOP</Typography>
+            <IconButton onClick={() => setDrawerOpen(false)} aria-label="Close menu">
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+          {member && (
+            <Typography sx={{ px: 2, pb: 1 }} color="text.secondary" variant="body2">
+              Signed in as <strong>{member.memberNick}</strong>
+            </Typography>
           )}
-        </div>
-      </div>
-    </header>
+          <Divider />
+          <List>
+            {navItems.map((item) => (
+              <ListItemButton
+                key={item.path}
+                component={NavLink}
+                to={item.path}
+                end={item.path === '/'}
+                className="ms-drawer-link"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <ListItemIcon>
+                  <item.icon />
+                </ListItemIcon>
+                <ListItemText primary={item.label} />
+              </ListItemButton>
+            ))}
+            <ListItemButton component={NavLink} to="/cart" className="ms-drawer-link" onClick={() => setDrawerOpen(false)}>
+              <ListItemIcon>
+                <Badge badgeContent={cartCount} color="primary">
+                  <ShoppingBagOutlinedIcon />
+                </Badge>
+              </ListItemIcon>
+              <ListItemText primary="Cart" />
+            </ListItemButton>
+          </List>
+          <Divider />
+          <List>
+            {member ? (
+              <>
+                <ListItemButton component={NavLink} to="/profile" className="ms-drawer-link" onClick={() => setDrawerOpen(false)}>
+                  <ListItemIcon>
+                    <AccountCircleOutlinedIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Profile" />
+                </ListItemButton>
+                <ListItemButton onClick={() => void signOut()}>
+                  <ListItemIcon>
+                    <LogoutIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Log out" />
+                </ListItemButton>
+              </>
+            ) : (
+              <>
+                <ListItemButton component={NavLink} to="/login" className="ms-drawer-link" onClick={() => setDrawerOpen(false)}>
+                  <ListItemIcon>
+                    <LoginIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Login" />
+                </ListItemButton>
+                <ListItemButton component={NavLink} to="/signup" className="ms-drawer-link" onClick={() => setDrawerOpen(false)}>
+                  <ListItemIcon>
+                    <PersonAddAltIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Sign up" />
+                </ListItemButton>
+              </>
+            )}
+          </List>
+        </Box>
+      </Drawer>
+    </AppBar>
   );
 }

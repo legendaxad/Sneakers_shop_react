@@ -1,103 +1,164 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, Sparkles, Truck, ShieldCheck } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Box, Button, Skeleton, Stack, Typography } from '@mui/material';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
+import VerifiedUserOutlinedIcon from '@mui/icons-material/VerifiedUserOutlined';
 import { ProductCard } from '../../components/common/ProductCard';
-import { productApi } from '../../services/api';
+import { EmptyState, ErrorState } from '../../components/common/PageStatus';
+import { SafeImage } from '../../components/common/SafeImage';
+import { getApiErrorMessage, productApi } from '../../services/api';
+import { useDocumentTitle } from '../../app/hooks';
+import { useAuthStore } from '../../app/store';
+import { FREE_SHIPPING_THRESHOLD, HERO_IMAGE } from '../../constants';
 import type { Product } from '../../types/product';
+import { formatPrice } from '../../utils/format';
+import '../../css/home.css';
+import '../../css/products.css';
+
+const features = [
+  {
+    icon: LocalShippingOutlinedIcon,
+    title: `Free shipping over ${formatPrice(FREE_SHIPPING_THRESHOLD)}`,
+    text: 'Fast dispatch on every order and attentive post-purchase care.',
+  },
+  {
+    icon: VerifiedUserOutlinedIcon,
+    title: 'Authenticity guarantee',
+    text: 'Only verified products and curated collections from trusted sources.',
+  },
+  {
+    icon: AutoAwesomeOutlinedIcon,
+    title: 'Performance-driven design',
+    text: 'Built to support training, everyday wear, and elevated street style.',
+  },
+];
 
 export function HomePage() {
+  useDocumentTitle('');
+  const member = useAuthStore((state) => state.member);
   const [featured, setFeatured] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadFeatured = async () => {
-      try {
-        const products = await productApi.getProducts({ page: 1, limit: 4, order: 'createdAt' });
-        setFeatured(products);
-      } catch {
-        setFeatured([]);
-      }
-    };
-
-    void loadFeatured();
+  const loadFeatured = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setFeatured(await productApi.getProducts({ page: 1, limit: 4, order: 'createdAt' }));
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    void loadFeatured();
+  }, [loadFeatured]);
+
   return (
-    <div className="space-y-12 pb-12">
-      <section className="rounded-[32px] bg-stone-900 px-6 py-10 text-white shadow-[0_35px_80px_rgba(24,24,27,0.26)] lg:px-10 lg:py-14">
-        <div className="grid items-center gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+    <Stack spacing={6} sx={{ pb: 6 }}>
+      <section className="ms-hero">
+        <div className="ms-hero-grid">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-            <p className="text-xs uppercase tracking-[0.38em] text-stone-300">Performance energy</p>
-            <h2 className="mt-4 max-w-xl text-4xl font-black tracking-[-0.05em] text-white md:text-6xl">
+            <Typography component="p" sx={{ fontSize: 12, letterSpacing: '0.38em', textTransform: 'uppercase', color: '#d6d3d1' }}>
+              Performance energy
+            </Typography>
+            <Typography variant="h1" sx={{ mt: 2, maxWidth: 560, fontSize: { xs: '2.25rem', md: '3.75rem' } }}>
               Run louder. Train harder. Look sharper.
-            </h2>
-            <p className="mt-6 max-w-lg text-base text-stone-300">
+            </Typography>
+            <Typography sx={{ mt: 3, maxWidth: 520, color: '#d6d3d1' }}>
               Discover premium sneakers built for everyday motion, crafted for season-long comfort and statement-level presence.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-4">
-              <Link to="/shop" className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-stone-900 transition hover:bg-stone-100">
+            </Typography>
+            <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 2, mt: 4 }}>
+              <Button
+                component={Link}
+                to="/shop"
+                endIcon={<ArrowForwardIcon />}
+                sx={{ bgcolor: '#fff', color: 'text.primary', px: 3, '&:hover': { bgcolor: '#f5f5f4' } }}
+              >
                 Shop collection
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link to="/signup" className="inline-flex items-center gap-2 rounded-full border border-white/30 px-6 py-3 text-sm font-semibold text-white hover:border-white/60">
-                Join the club
-              </Link>
-            </div>
+              </Button>
+              {!member && (
+                <Button
+                  component={Link}
+                  to="/signup"
+                  variant="outlined"
+                  sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.3)', px: 3, '&:hover': { borderColor: 'rgba(255,255,255,0.6)' } }}
+                >
+                  Join the club
+                </Button>
+              )}
+            </Stack>
           </motion.div>
 
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.45 }}
-            className="relative"
+            className="ms-hero-media"
           >
-            <div className="absolute -inset-6 rounded-[40px] bg-[#e7d9cb]/20 blur-2xl" />
-            <img
-              src="https://images.unsplash.com/photo-1543508282-6319a3e2621f?auto=format&fit=crop&w=1200&q=80"
-              alt="Premium sneaker"
-              className="relative h-[480px] w-full rounded-[28px] object-cover"
-            />
+            <div className="ms-hero-glow" />
+            <SafeImage src={HERO_IMAGE} alt="Premium sneaker" className="ms-hero-image" loading="eager" />
           </motion.div>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-[28px] border border-stone-200 bg-white p-6">
-          <Truck className="h-8 w-8 text-stone-900" />
-          <h3 className="mt-4 text-xl font-semibold text-stone-900">Free shipping over $100</h3>
-          <p className="mt-2 text-sm text-stone-600">Fast dispatch on every order and attentive post-purchase care.</p>
-        </div>
-        <div className="rounded-[28px] border border-stone-200 bg-white p-6">
-          <ShieldCheck className="h-8 w-8 text-stone-900" />
-          <h3 className="mt-4 text-xl font-semibold text-stone-900">Authenticity guarantee</h3>
-          <p className="mt-2 text-sm text-stone-600">Only verified products and curated collections from trusted sources.</p>
-        </div>
-        <div className="rounded-[28px] border border-stone-200 bg-white p-6">
-          <Sparkles className="h-8 w-8 text-stone-900" />
-          <h3 className="mt-4 text-xl font-semibold text-stone-900">Performance-driven design</h3>
-          <p className="mt-2 text-sm text-stone-600">Built to support training, everyday wear, and elevated street style.</p>
-        </div>
-      </section>
-
-      <section className="rounded-[30px] border border-stone-200 bg-[#f3efe9] p-6 md:p-8">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-stone-500">Featured drops</p>
-            <h3 className="mt-3 text-3xl font-black tracking-[-0.04em] text-stone-900">Editor’s picks</h3>
+      <Box component="section" sx={{ display: 'grid', gap: 2, gridTemplateColumns: { md: 'repeat(3, 1fr)' } }}>
+        {features.map(({ icon: Icon, title, text }) => (
+          <div key={title} className="ms-feature-card">
+            <Icon sx={{ fontSize: 32 }} />
+            <Typography variant="h5" component="h3" sx={{ mt: 2 }}>
+              {title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {text}
+            </Typography>
           </div>
-          <Link to="/shop" className="hidden text-sm font-semibold text-stone-800 md:inline-flex">
-            View all products →
-          </Link>
-        </div>
+        ))}
+      </Box>
 
-        <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-          {featured.length > 0 ? (
-            featured.map((product) => <ProductCard key={product._id} product={product} />)
+      <section className="ms-featured-section" aria-labelledby="featured-heading">
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <div>
+            <Typography component="p" sx={{ fontSize: 12, letterSpacing: '0.28em', textTransform: 'uppercase', color: 'text.secondary' }}>
+              Featured drops
+            </Typography>
+            <Typography id="featured-heading" variant="h3" component="h2" sx={{ mt: 1.5 }}>
+              Editor’s picks
+            </Typography>
+          </div>
+          <Button component={Link} to="/shop" endIcon={<ArrowForwardIcon />} sx={{ display: { xs: 'none', md: 'inline-flex' }, color: 'text.primary' }}>
+            View all products
+          </Button>
+        </Stack>
+
+        <Box sx={{ mt: 4 }}>
+          {error ? (
+            <ErrorState message={error} onRetry={() => void loadFeatured()} />
+          ) : loading ? (
+            <div className="ms-product-grid four">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton key={index} variant="rounded" height={400} sx={{ borderRadius: '28px' }} />
+              ))}
+            </div>
+          ) : featured.length ? (
+            <div className="ms-product-grid four">
+              {featured.map((product) => (
+                <ProductCard key={product._id} product={product} />
+              ))}
+            </div>
           ) : (
-            <p className="text-stone-500">Featured products are unavailable right now.</p>
+            <EmptyState title="New drops are on the way" description="Check back soon for the latest releases." />
           )}
-        </div>
+        </Box>
+        <Button component={Link} to="/shop" fullWidth endIcon={<ArrowForwardIcon />} sx={{ mt: 3, display: { md: 'none' }, color: 'text.primary' }}>
+          View all products
+        </Button>
       </section>
-    </div>
+    </Stack>
   );
 }

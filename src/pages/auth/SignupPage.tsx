@@ -1,93 +1,137 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowRight } from 'lucide-react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
+import { Alert, Button, Paper, TextField, Typography } from '@mui/material';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import { useDocumentTitle } from '../../app/hooks';
+import { useAuthStore, useNoticeStore } from '../../app/store';
 import { getApiErrorMessage, memberApi } from '../../services/api';
-import { useAuthStore } from '../../store/authStore';
+import { safeRedirect } from '../../utils/navigation';
+import '../../css/userPage.css';
 
+// Mirrors backend signup validation (Member.service.signup).
 const signupSchema = z.object({
-  memberNick: z.string().min(2, 'Nickname is required'),
-  memberPhone: z.string().min(8, 'Phone number is required'),
-  memberPassword: z.string().min(6, 'Password must be at least 6 characters'),
-  memberAddress: z.string().min(4, 'Address is required').optional().or(z.literal('')),
-  memberDesc: z.string().optional(),
+  memberNick: z.string().trim().min(2, 'Nickname must be at least 2 characters').max(30, 'Nickname must be 30 characters or fewer'),
+  memberPhone: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9\s\-()]{7,20}$/, 'Enter a valid phone number'),
+  memberPassword: z.string().min(6, 'Password must be at least 6 characters').max(128, 'Password is too long'),
+  memberAddress: z.string().trim().max(300, 'Address is too long').optional(),
+  memberDesc: z.string().trim().max(500, 'Description is too long').optional(),
 });
 
 type SignupFormValues = z.infer<typeof signupSchema>;
 
 export function SignupPage() {
+  useDocumentTitle('Create account');
   const navigate = useNavigate();
-  const setAuth = useAuthStore((state) => state.setAuth);
+  const location = useLocation();
+  const redirectTo = safeRedirect((location.state as { from?: string } | null)?.from);
+  const member = useAuthStore((state) => state.member);
+  const setMember = useAuthStore((state) => state.setMember);
+  const notify = useNoticeStore((state) => state.notify);
+  const [serverError, setServerError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
-    defaultValues: {
-      memberAddress: '',
-      memberDesc: '',
-    },
+    defaultValues: { memberAddress: '', memberDesc: '' },
   });
 
+  if (member && !isSubmitting) return <Navigate to={redirectTo} replace />;
+
   const onSubmit = async (values: SignupFormValues) => {
+    setServerError(null);
     try {
-      const response = await memberApi.signup(values);
-      setAuth(response.member, response.accessToken);
-      navigate('/');
+      const created = await memberApi.signup({
+        memberNick: values.memberNick,
+        memberPhone: values.memberPhone,
+        memberPassword: values.memberPassword,
+        memberAddress: values.memberAddress || undefined,
+        memberDesc: values.memberDesc || undefined,
+      });
+      setMember(created);
+      notify(`Welcome to MULTI-SHOP, ${created.memberNick}!`, 'success');
+      navigate(redirectTo, { replace: true });
     } catch (error) {
-      alert(getApiErrorMessage(error));
+      setServerError(getApiErrorMessage(error));
     }
   };
 
   return (
-    <div className="mx-auto max-w-xl rounded-[30px] bg-white p-8 shadow-sm ring-1 ring-stone-200 md:p-10">
-      <p className="text-[10px] uppercase tracking-[0.3em] text-stone-500">Start now</p>
-      <h2 className="mt-3 text-3xl font-black tracking-[-0.04em] text-stone-900">Create your account</h2>
+    <Paper variant="outlined" className="ms-auth-card" sx={{ maxWidth: 576 }}>
+      <span className="ms-eyebrow">Start now</span>
+      <Typography variant="h3" component="h1" sx={{ mt: 1.5 }}>
+        Create your account
+      </Typography>
 
-      <form className="mt-8 grid gap-5 md:grid-cols-2" onSubmit={void handleSubmit(onSubmit)}>
-        <div className="md:col-span-1">
-          <label className="mb-2 block text-sm font-medium text-stone-700">Nickname</label>
-          <input {...register('memberNick')} className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 outline-none transition focus:border-stone-400" />
-          {errors.memberNick && <p className="mt-2 text-sm text-red-600">{errors.memberNick.message}</p>}
-        </div>
-
-        <div className="md:col-span-1">
-          <label className="mb-2 block text-sm font-medium text-stone-700">Phone number</label>
-          <input {...register('memberPhone')} className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 outline-none transition focus:border-stone-400" />
-          {errors.memberPhone && <p className="mt-2 text-sm text-red-600">{errors.memberPhone.message}</p>}
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="mb-2 block text-sm font-medium text-stone-700">Password</label>
-          <input type="password" {...register('memberPassword')} className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 outline-none transition focus:border-stone-400" />
-          {errors.memberPassword && <p className="mt-2 text-sm text-red-600">{errors.memberPassword.message}</p>}
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="mb-2 block text-sm font-medium text-stone-700">Address</label>
-          <input {...register('memberAddress')} className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 outline-none transition focus:border-stone-400" />
-          {errors.memberAddress && <p className="mt-2 text-sm text-red-600">{errors.memberAddress.message}</p>}
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="mb-2 block text-sm font-medium text-stone-700">Profile description</label>
-          <textarea {...register('memberDesc')} rows={4} className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 outline-none transition focus:border-stone-400" />
-        </div>
-
-        <button type="submit" disabled={isSubmitting} className="md:col-span-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60">
-          {isSubmitting ? 'Creating account...' : 'Create account'}
-          <ArrowRight className="h-4 w-4" />
-        </button>
+      <form className="ms-form-grid two" style={{ marginTop: 32 }} onSubmit={handleSubmit(onSubmit)} noValidate>
+        {serverError && (
+          <Alert severity="error" className="span-2">
+            {serverError}
+          </Alert>
+        )}
+        <TextField
+          label="Nickname"
+          autoComplete="username"
+          {...register('memberNick')}
+          error={!!errors.memberNick}
+          helperText={errors.memberNick?.message}
+          fullWidth
+        />
+        <TextField
+          label="Phone number"
+          autoComplete="tel"
+          {...register('memberPhone')}
+          error={!!errors.memberPhone}
+          helperText={errors.memberPhone?.message}
+          fullWidth
+        />
+        <TextField
+          className="span-2"
+          label="Password"
+          type="password"
+          autoComplete="new-password"
+          {...register('memberPassword')}
+          error={!!errors.memberPassword}
+          helperText={errors.memberPassword?.message}
+          fullWidth
+        />
+        <TextField
+          className="span-2"
+          label="Address (optional)"
+          autoComplete="street-address"
+          {...register('memberAddress')}
+          error={!!errors.memberAddress}
+          helperText={errors.memberAddress?.message ?? 'You can add a full delivery address later in your profile or at checkout.'}
+          fullWidth
+        />
+        <TextField
+          className="span-2"
+          label="Profile description (optional)"
+          multiline
+          rows={3}
+          {...register('memberDesc')}
+          error={!!errors.memberDesc}
+          helperText={errors.memberDesc?.message}
+          fullWidth
+        />
+        <Button className="span-2" type="submit" variant="contained" size="large" disabled={isSubmitting} endIcon={<ArrowForwardIcon />} fullWidth>
+          {isSubmitting ? 'Creating account…' : 'Create account'}
+        </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-stone-600">
+      <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 3 }}>
         Already a member?{' '}
-        <Link className="font-semibold text-stone-900" to="/login">
+        <Link to="/login" state={location.state} style={{ fontWeight: 600 }}>
           Login here
         </Link>
-      </p>
-    </div>
+      </Typography>
+    </Paper>
   );
 }

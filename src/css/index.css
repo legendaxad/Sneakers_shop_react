@@ -1,0 +1,44 @@
+/* Global base styles. MUI's CssBaseline provides the reset; these add the MULTI-SHOP defaults. */
+:root {
+  --ms-ink: #1c1917;
+  --ms-ink-deep: #0c0a09;
+  --ms-sand: #f7f3ef;
+  --ms-sand-deep: #f3efe9;
+  --ms-latte: #e7d9cb;
+  --ms-line: #e7e5e4;
+  --ms-muted: #78716c;
+  --ms-body: #57534e;
+  --ms-radius-lg: 28px;
+  --ms-radius-md: 20px;
+  --ms-shadow-soft: 0 18px 40px rgba(24, 24, 27, 0.05);
+  --ms-shadow-strong: 0 30px 60px rgba(24, 24, 27, 0.28);
+
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  color: var(--ms-ink);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+}

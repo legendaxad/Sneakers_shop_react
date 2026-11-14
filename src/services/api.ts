@@ -1,41 +1,78 @@
-import axios from 'axios';
-import type { Member, LoginInput, AuthResponse, SignupInput, ProfileUpdateInput } from '../types/member';
-import type { Order, OrderItemInput } from '../types/order';
-import type { Product, ProductFilters } from '../types/product';
-import type { ApiErrorShape } from '../types/api';
+import axios, { AxiosError } from 'axios';
 import { API_BASE_URL } from '../constants';
+import { useAuthStore } from '../app/store';
+import type { ApiErrorShape } from '../types/api';
+import type { AuthResponse, LoginInput, Member, ProfileUpdateInput, SignupInput } from '../types/member';
+import type { Order, OrderCreateInput, OrderStatus } from '../types/order';
+import type { Product, ProductFilters } from '../types/product';
 
+/** Customer auth uses the httpOnly `accessToken` cookie, so every request sends credentials. */
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
+  timeout: 15000,
 });
 
-export const getApiErrorMessage = (error: unknown): string => {
-  const detail = (error as { response?: { data?: ApiErrorShape } })?.response?.data;
+/** Normalised error used throughout the UI. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly detail?: string;
 
-  if (detail?.message) {
-    return detail.message;
+  constructor(message: string, status: number, detail?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.detail = detail;
   }
+}
 
-  if (detail?.code) {
-    return `Request failed with status ${detail.code}`;
+const NO_DATA_MESSAGE = 'No data found!';
+
+export const toApiError = (error: unknown): ApiError => {
+  if (error instanceof ApiError) return error;
+  if (axios.isAxiosError(error)) {
+    const axiosError = error as AxiosError<ApiErrorShape>;
+    const status = axiosError.response?.status ?? 0;
+    const data = axiosError.response?.data;
+    if (!axiosError.response) {
+      return new ApiError('Cannot reach the shop server. Please check your connection and try again.', 0);
+    }
+    const message =
+      typeof data === 'object' && data?.message ? data.message : `Request failed with status ${status}.`;
+    return new ApiError(message, status, typeof data === 'object' ? data?.detail : undefined);
   }
-
-  return 'Unexpected error. Please try again.';
+  return new ApiError('Unexpected error. Please try again.', 0);
 };
 
+/** Human-readable message, including the backend detail (e.g. which product is out of stock). */
+export const getApiErrorMessage = (error: unknown): string => {
+  const apiError = toApiError(error);
+  return apiError.detail ? `${apiError.message} (${apiError.detail})` : apiError.message;
+};
+
+const isNoData = (error: ApiError) => error.status === 404 && error.message === NO_DATA_MESSAGE;
+
+// A 401 on an authenticated call means the cookie expired or the account was blocked.
+api.interceptors.response.use(undefined, (error: unknown) => {
+  const apiError = toApiError(error);
+  const url = axios.isAxiosError(error) ? (error.config?.url ?? '') : '';
+  if (apiError.status === 401 && !url.includes('/member/login')) {
+    if (useAuthStore.getState().member) useAuthStore.getState().clearMember();
+  }
+  return Promise.reject(apiError);
+});
+
 export const memberApi = {
-  login: async (input: LoginInput): Promise<AuthResponse> => {
+  login: async (input: LoginInput): Promise<Member> => {
     const { data } = await api.post<AuthResponse>('/member/login', input);
-    return data;
+    return data.member;
   },
-  signup: async (input: SignupInput): Promise<AuthResponse> => {
+  signup: async (input: SignupInput): Promise<Member> => {
     const { data } = await api.post<AuthResponse>('/member/signup', input);
-    return data;
+    return data.member;
   },
-  logout: async (): Promise<{ logout: boolean }> => {
-    const { data } = await api.post<{ logout: boolean }>('/member/logout');
-    return data;
+  logout: async (): Promise<void> => {
+    await api.post('/member/logout');
   },
   getProfile: async (): Promise<Member> => {
     const { data } = await api.get<Member>('/member/detail');
@@ -45,48 +82,57 @@ export const memberApi = {
     if (file) {
       const form = new FormData();
       form.append('memberImage', file);
-
       Object.entries(payload).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          form.append(key, value);
-        }
+        if (value === undefined || value === null) return;
+        form.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
       });
-
-      const { data } = await api.post<Member>('/member/update', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
+      const { data } = await api.post<Member>('/member/update', form);
       return data;
     }
-
     const { data } = await api.post<Member>('/member/update', payload);
     return data;
   },
 };
 
 export const productApi = {
+  /** Returns an empty list when nothing matches (backend answers 404 "No data found!"). */
   getProducts: async (filters: ProductFilters = {}): Promise<Product[]> => {
-    const { data } = await api.get<Product[]>('/product/all', { params: filters });
-    return data;
+    try {
+      const { data } = await api.get<Product[]>('/product/all', { params: filters });
+      return data;
+    } catch (error) {
+      const apiError = toApiError(error);
+      if (isNoData(apiError)) return [];
+      throw apiError;
+    }
+  },
+  getProductCount: async (filters: Omit<ProductFilters, 'page' | 'limit' | 'order'> = {}): Promise<number> => {
+    const { data } = await api.get<{ total: number }>('/product/count', { params: filters });
+    return data.total;
   },
   getProduct: async (id: string): Promise<Product> => {
-    const { data } = await api.get<Product>(`/product/${id}`);
+    const { data } = await api.get<Product>(`/product/${encodeURIComponent(id)}`);
     return data;
   },
 };
 
 export const orderApi = {
-  createOrder: async (items: OrderItemInput[]): Promise<Order> => {
-    const { data } = await api.post<Order>('/order/create', items);
+  createOrder: async (input: OrderCreateInput): Promise<Order> => {
+    const { data } = await api.post<Order>('/order/create', input);
     return data;
   },
-  getOrders: async (page = 1, limit = 10, orderStatus?: string): Promise<Order[]> => {
-    const { data } = await api.get<Order[]>('/order/all', {
-      params: { page, limit, orderStatus },
-    });
-    return data;
+  /** Returns an empty list when the customer has no (matching) orders. */
+  getOrders: async (page = 1, limit = 10, orderStatus?: OrderStatus): Promise<Order[]> => {
+    try {
+      const { data } = await api.get<Order[]>('/order/all', { params: { page, limit, orderStatus } });
+      return data;
+    } catch (error) {
+      const apiError = toApiError(error);
+      if (isNoData(apiError)) return [];
+      throw apiError;
+    }
   },
-  updateOrder: async (orderId: string, orderStatus: string): Promise<Order> => {
+  updateOrder: async (orderId: string, orderStatus: OrderStatus): Promise<Order> => {
     const { data } = await api.post<Order>('/order/update', { orderId, orderStatus });
     return data;
   },

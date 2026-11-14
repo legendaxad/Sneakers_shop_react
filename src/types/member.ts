@@ -1,24 +1,35 @@
 export type MemberType = 'ADMIN' | 'USER' | 'SHOP';
 export type MemberStatus = 'ACTIVE' | 'BLOCK' | 'DELETE';
 
+export interface DeliveryAddress {
+  recipientName: string;
+  phone: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  region?: string;
+  postalCode?: string;
+  country: string;
+}
+
 export interface Member {
   _id: string;
   memberType: MemberType;
   memberStatus: MemberStatus;
   memberNick: string;
   memberPhone: string;
-  memberPassword?: string;
   memberAddress?: string;
   memberDesc?: string;
   memberImage?: string;
+  memberDeliveryAddress?: DeliveryAddress;
   memberPoint: number;
   createdAt?: string;
   updatedAt?: string;
 }
 
+/** The backend sets the `accessToken` cookie (httpOnly); only the member is returned. */
 export interface AuthResponse {
   member: Member;
-  accessToken: string;
 }
 
 export interface LoginInput {
@@ -40,4 +51,5 @@ export interface ProfileUpdateInput {
   memberPassword?: string;
   memberAddress?: string;
   memberDesc?: string;
+  memberDeliveryAddress?: DeliveryAddress;
 }

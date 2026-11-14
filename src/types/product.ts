@@ -30,10 +30,12 @@ export interface Product {
   updatedAt?: string;
 }
 
+export type ProductOrder = 'createdAt' | 'productPrice' | 'productViews';
+
 export interface ProductFilters {
   page?: number;
   limit?: number;
-  order?: 'createdAt' | 'productPrice';
+  order?: ProductOrder;
   productCollection?: ProductCollection;
   search?: string;
 }

@@ -1,76 +1,90 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowRight } from 'lucide-react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
-import { useAuthStore } from '../../store/authStore';
-import { memberApi, getApiErrorMessage } from '../../services/api';
+import { Alert, Button, Paper, Stack, TextField, Typography } from '@mui/material';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import { useDocumentTitle } from '../../app/hooks';
+import { useAuthStore, useNoticeStore } from '../../app/store';
+import { getApiErrorMessage, memberApi } from '../../services/api';
+import { safeRedirect } from '../../utils/navigation';
+import '../../css/userPage.css';
 
 const loginSchema = z.object({
-  memberIdentity: z.string().min(2, 'Please enter your nickname or phone number'),
+  memberIdentity: z.string().trim().min(2, 'Please enter your nickname or phone number'),
   memberPassword: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
+  useDocumentTitle('Login');
   const navigate = useNavigate();
-  const setAuth = useAuthStore((state) => state.setAuth);
+  const location = useLocation();
+  const redirectTo = safeRedirect((location.state as { from?: string } | null)?.from);
+  const member = useAuthStore((state) => state.member);
+  const setMember = useAuthStore((state) => state.setMember);
+  const notify = useNoticeStore((state) => state.notify);
+  const [serverError, setServerError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema) });
 
+  if (member && !isSubmitting) return <Navigate to={redirectTo} replace />;
+
   const onSubmit = async (values: LoginFormValues) => {
+    setServerError(null);
     try {
-      const response = await memberApi.login(values);
-      setAuth(response.member, response.accessToken);
-      navigate('/');
+      const loggedIn = await memberApi.login(values);
+      setMember(loggedIn);
+      notify(`Welcome back, ${loggedIn.memberNick}!`, 'success');
+      navigate(redirectTo, { replace: true });
     } catch (error) {
-      alert(getApiErrorMessage(error));
+      setServerError(getApiErrorMessage(error));
     }
   };
 
   return (
-    <div className="mx-auto max-w-lg rounded-[30px] bg-white p-8 shadow-sm ring-1 ring-stone-200 md:p-10">
-      <p className="text-[10px] uppercase tracking-[0.3em] text-stone-500">Welcome back</p>
-      <h2 className="mt-3 text-3xl font-black tracking-[-0.04em] text-stone-900">Login to MULTI-SHOP</h2>
+    <Paper variant="outlined" className="ms-auth-card" sx={{ maxWidth: 512 }}>
+      <span className="ms-eyebrow">Welcome back</span>
+      <Typography variant="h3" component="h1" sx={{ mt: 1.5 }}>
+        Login to MULTI-SHOP
+      </Typography>
 
-      <form className="mt-8 space-y-5" onSubmit={void handleSubmit(onSubmit)}>
-        <div>
-          <label className="mb-2 block text-sm font-medium text-stone-700">Nickname or phone</label>
-          <input
-            {...register('memberIdentity')}
-            className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 outline-none transition focus:border-stone-400"
-            placeholder="jordan88 or +123..."
-          />
-          {errors.memberIdentity && <p className="mt-2 text-sm text-red-600">{errors.memberIdentity.message}</p>}
-        </div>
+      <Stack component="form" spacing={2.5} sx={{ mt: 4 }} onSubmit={handleSubmit(onSubmit)} noValidate>
+        {serverError && <Alert severity="error">{serverError}</Alert>}
+        <TextField
+          label="Nickname or phone"
+          placeholder="jordan88 or +123..."
+          autoComplete="username"
+          {...register('memberIdentity')}
+          error={!!errors.memberIdentity}
+          helperText={errors.memberIdentity?.message}
+          fullWidth
+        />
+        <TextField
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          {...register('memberPassword')}
+          error={!!errors.memberPassword}
+          helperText={errors.memberPassword?.message}
+          fullWidth
+        />
+        <Button type="submit" variant="contained" size="large" disabled={isSubmitting} endIcon={<ArrowForwardIcon />} fullWidth>
+          {isSubmitting ? 'Signing in…' : 'Login'}
+        </Button>
+      </Stack>
 
-        <div>
-          <label className="mb-2 block text-sm font-medium text-stone-700">Password</label>
-          <input
-            type="password"
-            {...register('memberPassword')}
-            className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 outline-none transition focus:border-stone-400"
-            placeholder="••••••••"
-          />
-          {errors.memberPassword && <p className="mt-2 text-sm text-red-600">{errors.memberPassword.message}</p>}
-        </div>
-
-        <button type="submit" disabled={isSubmitting} className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60">
-          {isSubmitting ? 'Signing in...' : 'Login'}
-          <ArrowRight className="h-4 w-4" />
-        </button>
-      </form>
-
-      <p className="mt-6 text-center text-sm text-stone-600">
+      <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 3 }}>
         Need an account?{' '}
-        <Link className="font-semibold text-stone-900" to="/signup">
+        <Link to="/signup" state={location.state} style={{ fontWeight: 600 }}>
           Create one
         </Link>
-      </p>
-    </div>
+      </Typography>
+    </Paper>
   );
 }

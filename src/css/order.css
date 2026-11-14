@@ -1,0 +1,84 @@
+/* Cart, checkout and order history */
+.ms-line-item {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+@media (min-width: 600px) {
+  .ms-line-item {
+    flex-direction: row;
+  }
+}
+
+.ms-line-item-image {
+  width: 100%;
+  height: 128px;
+  object-fit: cover;
+  border-radius: 18px;
+  flex-shrink: 0;
+}
+
+@media (min-width: 600px) {
+  .ms-line-item-image {
+    width: 160px;
+  }
+}
+
+.ms-mini-line {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  border-radius: var(--ms-radius-md);
+  border: 1px solid var(--ms-line);
+}
+
+.ms-mini-line img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 16px;
+  flex-shrink: 0;
+}
+
+.ms-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--ms-line);
+  background: #fafaf9;
+  padding: 4px;
+}
+
+.ms-stepper-value {
+  min-width: 32px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ms-order-card {
+  padding: 24px;
+}
+
+.ms-order-lines {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 900px) {
+  .ms-order-lines {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.ms-order-address {
+  background: #fafaf9;
+  border-radius: var(--ms-radius-md);
+  padding: 16px;
+  font-size: 14px;
+  color: var(--ms-body);
+}

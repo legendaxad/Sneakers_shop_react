@@ -1,0 +1,146 @@
+/* Product grid + cards */
+.ms-product-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 600px) {
+  .ms-product-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .ms-product-grid.three {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .ms-product-grid.four {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.ms-product-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--ms-shadow-soft) !important;
+}
+
+.ms-product-card-media {
+  position: relative;
+  overflow: hidden;
+  display: block;
+}
+
+.ms-product-card-media img {
+  height: 288px;
+  width: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.ms-product-card:hover .ms-product-card-media img {
+  transform: scale(1.05);
+}
+
+.ms-product-card-brand {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #44403c;
+}
+
+.ms-product-card-title {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ms-product-card-title:hover {
+  text-decoration: underline;
+}
+
+/* Shop filters */
+.ms-filter-bar {
+  padding: 24px;
+}
+
+.ms-filter-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 576px;
+}
+
+@media (min-width: 900px) {
+  .ms-filter-controls {
+    flex-direction: row;
+  }
+}
+
+/* Product detail */
+.ms-detail-grid {
+  display: grid;
+  gap: 32px;
+}
+
+@media (min-width: 1024px) {
+  .ms-detail-grid {
+    grid-template-columns: 1.1fr 0.9fr;
+  }
+}
+
+.ms-detail-main-image {
+  width: 100%;
+  height: 360px;
+  object-fit: cover;
+  border-radius: 22px;
+}
+
+@media (min-width: 900px) {
+  .ms-detail-main-image {
+    height: 520px;
+  }
+}
+
+.ms-detail-thumbs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.ms-detail-thumb {
+  padding: 8px;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 2px solid var(--ms-line);
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.ms-detail-thumb.selected {
+  border-color: var(--ms-ink);
+}
+
+.ms-detail-thumb img {
+  height: 112px;
+  width: 100%;
+  object-fit: cover;
+  border-radius: 16px;
+}
+
+.ms-size-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

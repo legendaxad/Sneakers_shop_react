@@ -1,9 +1,11 @@
-import { Link } from 'react-router-dom';
-import { Plus, ShoppingBag } from 'lucide-react';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useCartStore } from '../../store/cartStore';
+import { Box, Card, CardContent, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
+import { useCartStore, useNoticeStore } from '../../app/store';
 import type { Product } from '../../types/product';
-import { formatPrice, resolveImageUrl } from '../../utils/format';
+import { formatPrice, titleCase } from '../../utils/format';
+import { SafeImage } from './SafeImage';
 
 interface ProductCardProps {
   product: Product;
@@ -11,50 +13,85 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const addItem = useCartStore((state) => state.addItem);
+  const notify = useNoticeStore((state) => state.notify);
+  const navigate = useNavigate();
+  const soldOut = product.productLeftCount <= 0;
+  const needsSize = (product.productSizes?.length ?? 0) > 0;
+
+  const handleAdd = () => {
+    if (needsSize) {
+      // Shoes need a size: send the customer to choose one.
+      navigate(`/product/${product._id}`);
+      return;
+    }
+    addItem(product, null, 1);
+    notify(`${product.productName} added to your cart.`, 'success');
+  };
 
   return (
-    <motion.article
-      layout
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
       transition={{ duration: 0.35 }}
-      className="group overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-[0_18px_40px_rgba(24,24,27,0.05)]"
+      style={{ height: '100%' }}
     >
-      <Link to={`/product/${product._id}`} className="block">
-        <div className="relative overflow-hidden">
-          <img
-            src={resolveImageUrl(product.productImages?.[0])}
-            alt={product.productName}
-            className="h-72 w-full object-cover transition duration-500 group-hover:scale-105"
-          />
-          <span className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-700">
-            {product.productBrand}
-          </span>
-        </div>
-      </Link>
+      <Card component="article" className="ms-product-card">
+        <RouterLink to={`/product/${product._id}`} className="ms-product-card-media" aria-label={product.productName}>
+          <SafeImage src={product.productImages?.[0]} alt={product.productName} />
+          <span className="ms-product-card-brand">{product.productBrand}</span>
+        </RouterLink>
 
-      <div className="space-y-4 p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-stone-500">{product.productCategory}</p>
-            <h3 className="mt-2 text-lg font-semibold text-stone-900">{product.productName}</h3>
-          </div>
-          <span className="text-lg font-semibold text-stone-900">{formatPrice(product.productPrice)}</span>
-        </div>
+        <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <Box>
+              <Typography className="ms-eyebrow" component="p" sx={{ letterSpacing: '0.2em !important' }}>
+                {titleCase(product.productCategory)}
+              </Typography>
+              <Typography
+                component={RouterLink}
+                to={`/product/${product._id}`}
+                variant="h6"
+                className="ms-product-card-title"
+                sx={{ mt: 1, display: 'block' }}
+              >
+                {product.productName}
+              </Typography>
+            </Box>
+            <Typography variant="h6" component="span" sx={{ whiteSpace: 'nowrap' }}>
+              {formatPrice(product.productPrice)}
+            </Typography>
+          </Stack>
 
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-stone-500">{product.productLeftCount} left</p>
-          <button
-            type="button"
-            onClick={() => addItem(product, 1)}
-            className="inline-flex items-center gap-2 rounded-full bg-stone-950 px-3 py-2 text-sm font-medium text-white transition hover:bg-stone-800"
-          >
-            <Plus className="h-4 w-4" />
-            <ShoppingBag className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </motion.article>
+          <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mt: 'auto' }}>
+            {soldOut ? (
+              <Chip label="Sold out" size="small" />
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                {product.productLeftCount} left
+              </Typography>
+            )}
+            <Tooltip title={soldOut ? 'Sold out' : needsSize ? 'Choose a size' : 'Add to cart'}>
+              <span>
+                <IconButton
+                  onClick={handleAdd}
+                  disabled={soldOut}
+                  aria-label={needsSize ? `Choose a size for ${product.productName}` : `Add ${product.productName} to cart`}
+                  sx={{
+                    bgcolor: 'primary.dark',
+                    color: '#fff',
+                    px: 1.5,
+                    '&:hover': { bgcolor: '#292524' },
+                    '&.Mui-disabled': { bgcolor: 'divider' },
+                  }}
+                >
+                  <AddShoppingCartIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Stack>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }

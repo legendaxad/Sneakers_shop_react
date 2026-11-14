@@ -1,11 +1,32 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import {
+  Box,
+  Button,
+  Chip,
+  FormControl,
+  InputAdornment,
+  InputLabel,
+  MenuItem,
+  Pagination,
+  Select,
+  Skeleton,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import SearchOffIcon from '@mui/icons-material/SearchOff';
 import { ProductCard } from '../../components/common/ProductCard';
-import { productApi } from '../../services/api';
-import { ProductCollection, type Product } from '../../types/product';
+import { EmptyState, ErrorState } from '../../components/common/PageStatus';
+import { useDebouncedValue, useDocumentTitle } from '../../app/hooks';
+import { getApiErrorMessage, productApi } from '../../services/api';
+import { PRODUCTS_PER_PAGE } from '../../constants';
+import { ProductCollection, type Product, type ProductOrder } from '../../types/product';
+import { titleCase } from '../../utils/format';
+import '../../css/products.css';
 
-const collections = [
+const collections: { label: string; value: '' | ProductCollection }[] = [
   { label: 'All', value: '' },
   { label: 'Running', value: ProductCollection.RUNNING },
   { label: 'Casual', value: ProductCollection.CASUAL },
@@ -13,119 +34,223 @@ const collections = [
   { label: 'Football', value: ProductCollection.FOOTBALL },
   { label: 'Training', value: ProductCollection.TRAINING },
   { label: 'Lifestyle', value: ProductCollection.LIFESTYLE },
+  { label: 'Other', value: ProductCollection.OTHER },
 ];
+
+const sortOptions: { label: string; value: ProductOrder }[] = [
+  { label: 'Newest', value: 'createdAt' },
+  { label: 'Price: low to high', value: 'productPrice' },
+  { label: 'Most popular', value: 'productViews' },
+];
+
+const isCollection = (value: string): value is ProductCollection =>
+  (Object.values(ProductCollection) as string[]).includes(value);
 
 export function ShopPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const collectionParam = searchParams.get('collection') ?? '';
+  const selectedCollection = isCollection(collectionParam) ? collectionParam : '';
+  const orderParam = searchParams.get('order') as ProductOrder | null;
+  const order: ProductOrder = sortOptions.some((option) => option.value === orderParam) ? orderParam! : 'createdAt';
+  const page = Math.max(Number(searchParams.get('page')) || 1, 1);
+  const searchParam = searchParams.get('search') ?? '';
 
-  const selectedCollection = searchParams.get('collection') ?? '';
-  const order = searchParams.get('order') ?? 'createdAt';
-  const search = searchParams.get('search') ?? '';
+  const [searchInput, setSearchInput] = useState(searchParam);
+  const debouncedSearch = useDebouncedValue(searchInput.trim(), 350);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useDocumentTitle(selectedCollection ? `${titleCase(selectedCollection)} sneakers` : 'Shop');
+
+  const updateParams = useCallback(
+    (updates: Record<string, string>, resetPage = true) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          Object.entries(updates).forEach(([key, value]) => (value ? next.set(key, value) : next.delete(key)));
+          if (resetPage) next.delete('page');
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  // Push the debounced search term into the URL (one request per pause in typing).
+  // Only reacts to the debounced value changing, so clearing filters is not undone
+  // by a stale debounced term.
+  const searchParamRef = useRef(searchParam);
+  useEffect(() => {
+    searchParamRef.current = searchParam;
+  }, [searchParam]);
+  const lastDebounced = useRef(debouncedSearch);
+  useEffect(() => {
+    if (debouncedSearch === lastDebounced.current) return;
+    lastDebounced.current = debouncedSearch;
+    if (debouncedSearch !== searchParamRef.current) updateParams({ search: debouncedSearch });
+  }, [debouncedSearch, updateParams]);
+
+  // Keep the input in sync with back/forward navigation.
+  useEffect(() => {
+    setSearchInput((current) => (current.trim() === searchParam ? current : searchParam));
+  }, [searchParam]);
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        const data = await productApi.getProducts({
-          page: 1,
-          limit: 12,
-          order: order === 'productPrice' ? 'productPrice' : 'createdAt',
-          productCollection: selectedCollection ? (selectedCollection as ProductCollection) : undefined,
-          search: search || undefined,
-        });
-        setProducts(data);
-      } catch {
-        setProducts([]);
-      } finally {
-        setLoading(false);
-      }
+    let active = true;
+    const filters = {
+      productCollection: selectedCollection || undefined,
+      search: searchParam || undefined,
     };
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      productApi.getProducts({ ...filters, page, limit: PRODUCTS_PER_PAGE, order }),
+      productApi.getProductCount(filters),
+    ])
+      .then(([list, count]) => {
+        if (!active) return;
+        setProducts(list);
+        setTotal(count);
+      })
+      .catch((err) => active && setError(getApiErrorMessage(err)))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [order, page, searchParam, selectedCollection, reloadKey]);
 
-    void fetchProducts();
-  }, [order, search, selectedCollection]);
-
-  const collectionSummary = useMemo(() => {
-    if (!selectedCollection) return 'All sneakers';
-    return `${selectedCollection} collection`;
-  }, [selectedCollection]);
-
-  const updateFilters = (updates: Record<string, string>) => {
-    const next = new URLSearchParams(searchParams);
-
-    Object.entries(updates).forEach(([key, value]) => {
-      if (!value) {
-        next.delete(key);
-      } else {
-        next.set(key, value);
-      }
-    });
-
-    setSearchParams(next);
-  };
+  const pageCount = Math.max(Math.ceil(total / PRODUCTS_PER_PAGE), 1);
+  const summary = useMemo(
+    () => (selectedCollection ? `${titleCase(selectedCollection)} collection` : 'All sneakers'),
+    [selectedCollection],
+  );
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-stone-200">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <Stack spacing={4}>
+      <section className="ms-surface ms-filter-bar">
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ alignItems: { lg: 'center' }, justifyContent: 'space-between' }}>
           <div>
-            <p className="text-[10px] uppercase tracking-[0.28em] text-stone-500">Collection overview</p>
-            <h2 className="mt-3 text-3xl font-black tracking-[-0.04em] text-stone-900">{collectionSummary}</h2>
+            <span className="ms-eyebrow">Collection overview</span>
+            <Typography variant="h3" component="h1" sx={{ mt: 1.5 }}>
+              {summary}
+            </Typography>
+            {!loading && !error && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {total} {total === 1 ? 'product' : 'products'}
+                {searchParam ? ` matching “${searchParam}”` : ''}
+              </Typography>
+            )}
           </div>
-          <div className="flex w-full max-w-xl flex-col gap-3 md:flex-row">
-            <label className="flex flex-1 items-center gap-2 rounded-full border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-              <Search className="h-4 w-4" />
-              <input
-                value={search}
-                onChange={(event) => updateFilters({ search: event.target.value })}
-                placeholder="Search sneakers"
-                className="w-full bg-transparent outline-none placeholder:text-stone-400"
-              />
-            </label>
-            <select
-              value={order}
-              onChange={(event) => updateFilters({ order: event.target.value })}
-              className="rounded-full border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700 outline-none"
-            >
-              <option value="createdAt">Newest</option>
-              <option value="productPrice">Price: low to high</option>
-            </select>
+          <div className="ms-filter-controls">
+            <TextField
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Search sneakers or brands"
+              size="small"
+              fullWidth
+              slotProps={{
+                htmlInput: { 'aria-label': 'Search products', maxLength: 100 },
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: 999 },
+                },
+              }}
+            />
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel id="sort-label">Sort by</InputLabel>
+              <Select
+                labelId="sort-label"
+                label="Sort by"
+                value={order}
+                onChange={(event) => updateParams({ order: event.target.value === 'createdAt' ? '' : event.target.value })}
+                sx={{ borderRadius: 999 }}
+              >
+                {sortOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </div>
-        </div>
+        </Stack>
 
-        <div className="mt-6 flex flex-wrap gap-2">
+        <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mt: 3 }} role="group" aria-label="Collections">
           {collections.map((collection) => {
             const active = selectedCollection === collection.value;
             return (
-              <button
+              <Chip
                 key={collection.label}
-                type="button"
-                onClick={() => updateFilters({ collection: collection.value })}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                  active ? 'bg-stone-900 text-white' : 'border border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300'
-                }`}
-              >
-                {collection.label}
-              </button>
+                label={collection.label}
+                onClick={() => updateParams({ collection: collection.value })}
+                color={active ? 'primary' : 'default'}
+                variant={active ? 'filled' : 'outlined'}
+                aria-pressed={active}
+                sx={{ px: 1, height: 36, bgcolor: active ? undefined : '#fafaf9' }}
+              />
             );
           })}
-        </div>
+        </Stack>
       </section>
 
-      <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {loading ? (
-          Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="h-80 animate-pulse rounded-[28px] bg-stone-200" />
-          ))
-        ) : products.length > 0 ? (
-          products.map((product) => <ProductCard key={product._id} product={product} />)
-        ) : (
-          <p className="col-span-full rounded-[28px] border border-dashed border-stone-300 bg-white p-10 text-center text-stone-500">
-            No products match your current filters.
-          </p>
-        )}
-      </section>
-    </div>
+      {error ? (
+        <ErrorState message={error} onRetry={() => setReloadKey((key) => key + 1)} />
+      ) : loading ? (
+        <div className="ms-product-grid three">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} variant="rounded" height={400} sx={{ borderRadius: '28px' }} />
+          ))}
+        </div>
+      ) : products.length ? (
+        <>
+          <div className="ms-product-grid three">
+            {products.map((product) => (
+              <ProductCard key={product._id} product={product} />
+            ))}
+          </div>
+          {pageCount > 1 && (
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+              <Pagination
+                count={pageCount}
+                page={Math.min(page, pageCount)}
+                onChange={(_, value) => {
+                  updateParams({ page: value > 1 ? String(value) : '' }, false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                shape="rounded"
+                color="primary"
+              />
+            </Box>
+          )}
+        </>
+      ) : (
+        <EmptyState
+          icon={SearchOffIcon}
+          title="No products found"
+          description="No products match your current filters."
+          action={
+            (selectedCollection || searchParam) && (
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setSearchInput('');
+                  updateParams({ collection: '', search: '' });
+                }}
+              >
+                Clear filters
+              </Button>
+            )
+          }
+        />
+      )}
+    </Stack>
   );
 }

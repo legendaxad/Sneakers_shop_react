@@ -1,117 +1,223 @@
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { Minus, Plus, ShoppingBag } from 'lucide-react';
-import { productApi } from '../../services/api';
-import { useCartStore } from '../../store/cartStore';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import {
+  Alert,
+  Box,
+  Breadcrumbs,
+  Button,
+  Chip,
+  FormHelperText,
+  Skeleton,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material';
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
+import SearchOffIcon from '@mui/icons-material/SearchOff';
+import { EmptyState, ErrorState } from '../../components/common/PageStatus';
+import { QuantityStepper } from '../../components/common/QuantityStepper';
+import { SafeImage } from '../../components/common/SafeImage';
+import { useDocumentTitle } from '../../app/hooks';
+import { productQuantityInCart, useCartStore, useNoticeStore } from '../../app/store';
+import { MAX_ITEM_QUANTITY } from '../../constants';
+import { productApi, toApiError } from '../../services/api';
 import type { Product } from '../../types/product';
-import { formatPrice, resolveImageUrl } from '../../utils/format';
+import { formatPrice, titleCase } from '../../utils/format';
+import '../../css/products.css';
+
+type LoadState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'not-found' } | { status: 'ready'; product: Product };
 
 export function ProductDetailPage() {
-  const { id } = useParams();
+  const { id = '' } = useParams();
   const addItem = useCartStore((state) => state.addItem);
-  const [product, setProduct] = useState<Product | null>(null);
+  const cartItems = useCartStore((state) => state.items);
+  const notify = useNoticeStore((state) => state.notify);
+  const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [selectedSize, setSelectedSize] = useState<number | null>(null);
+  const [sizeError, setSizeError] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [activeImage, setActiveImage] = useState(0);
 
-  useEffect(() => {
-    if (!id) return;
+  const product = state.status === 'ready' ? state.product : null;
+  useDocumentTitle(product?.productName ?? 'Product');
 
-    const fetchProduct = async () => {
-      try {
-        const nextProduct = await productApi.getProduct(id);
-        setProduct(nextProduct);
-        setSelectedSize(nextProduct.productSizes[0] ?? null);
-      } catch {
-        setProduct(null);
-      }
-    };
-
-    void fetchProduct();
+  const load = useCallback(async () => {
+    setState({ status: 'loading' });
+    setSelectedSize(null);
+    setSizeError(false);
+    setQuantity(1);
+    setActiveImage(0);
+    try {
+      setState({ status: 'ready', product: await productApi.getProduct(id) });
+    } catch (error) {
+      const apiError = toApiError(error);
+      if (apiError.status === 404 || apiError.status === 400) setState({ status: 'not-found' });
+      else setState({ status: 'error', message: apiError.message });
+    }
   }, [id]);
 
-  if (!product) {
-    return <div className="rounded-[28px] bg-white p-10 text-center text-stone-500">Loading product...</div>;
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (state.status === 'loading') {
+    return (
+      <div className="ms-detail-grid" aria-busy="true">
+        <Skeleton variant="rounded" height={540} sx={{ borderRadius: '30px' }} />
+        <Skeleton variant="rounded" height={540} sx={{ borderRadius: '30px' }} />
+      </div>
+    );
   }
 
-  const imageList = product.productImages?.length ? product.productImages : [undefined];
+  if (state.status === 'not-found') {
+    return (
+      <EmptyState
+        icon={SearchOffIcon}
+        title="Product not found"
+        description="This product does not exist or is no longer available."
+        action={
+          <Button component={Link} to="/shop" variant="contained">
+            Back to the shop
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => void load()} />;
+
+  const { product: item } = state;
+  const sizes = [...(item.productSizes ?? [])].sort((a, b) => a - b);
+  const needsSize = sizes.length > 0;
+  const inCart = productQuantityInCart(cartItems, item._id);
+  const available = Math.max(Math.min(item.productLeftCount - inCart, MAX_ITEM_QUANTITY), 0);
+  const soldOut = item.productLeftCount <= 0;
+  const images = item.productImages?.length ? item.productImages : [undefined];
+
+  const handleAdd = () => {
+    if (needsSize && selectedSize === null) {
+      setSizeError(true);
+      return;
+    }
+    addItem(item, needsSize ? selectedSize : null, Math.min(quantity, available));
+    notify(`${item.productName}${needsSize ? ` (EU ${selectedSize})` : ''} added to your cart.`, 'success');
+    setQuantity(1);
+  };
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-      <div className="space-y-4">
-        <div className="overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-stone-200">
-          <img src={resolveImageUrl(imageList[0])} alt={product.productName} className="h-[520px] w-full rounded-[22px] object-cover" />
-        </div>
-        <div className="grid grid-cols-3 gap-4">
-          {imageList.slice(0, 3).map((image, index) => (
-            <div key={index} className="overflow-hidden rounded-[22px] bg-white p-2 ring-1 ring-stone-200">
-              <img
-                src={resolveImageUrl(image)}
-                alt={`${product.productName} thumbnail ${index + 1}`}
-                className="h-28 w-full rounded-[16px] object-cover"
-              />
+    <Stack spacing={3}>
+      <Breadcrumbs aria-label="breadcrumb">
+        <Link to="/shop" style={{ textDecoration: 'none' }}>
+          Shop
+        </Link>
+        <Link to={`/shop?collection=${item.productCategory}`} style={{ textDecoration: 'none' }}>
+          {titleCase(item.productCategory)}
+        </Link>
+        <Typography color="text.primary">{item.productName}</Typography>
+      </Breadcrumbs>
+
+      <div className="ms-detail-grid">
+        <Stack spacing={2}>
+          <Box className="ms-surface" sx={{ p: 2, overflow: 'hidden' }}>
+            <SafeImage src={images[activeImage]} alt={item.productName} className="ms-detail-main-image" loading="eager" />
+          </Box>
+          {images.length > 1 && (
+            <div className="ms-detail-thumbs">
+              {images.slice(0, 5).map((image, index) => (
+                <button
+                  key={`${image}-${index}`}
+                  type="button"
+                  className={`ms-detail-thumb${index === activeImage ? ' selected' : ''}`}
+                  onClick={() => setActiveImage(index)}
+                  aria-label={`Show image ${index + 1}`}
+                  aria-pressed={index === activeImage}
+                >
+                  <SafeImage src={image} alt="" />
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
+          )}
+        </Stack>
 
-      <div className="rounded-[30px] bg-white p-6 shadow-sm ring-1 ring-stone-200 md:p-8">
-        <p className="text-[10px] uppercase tracking-[0.28em] text-stone-500">{product.productBrand}</p>
-        <h2 className="mt-4 text-4xl font-black tracking-[-0.05em] text-stone-900">{product.productName}</h2>
-        <p className="mt-4 text-3xl font-bold text-stone-900">{formatPrice(product.productPrice)}</p>
+        <Box className="ms-surface" sx={{ p: { xs: 3, md: 4 } }}>
+          <span className="ms-eyebrow">{item.productBrand}</span>
+          <Typography variant="h2" component="h1" sx={{ mt: 2 }}>
+            {item.productName}
+          </Typography>
+          <Typography sx={{ mt: 2, fontSize: 30, fontWeight: 700 }}>{formatPrice(item.productPrice)}</Typography>
 
-        <div className="mt-6 flex items-center gap-2 text-sm text-stone-600">
-          <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">{product.productLeftCount} left</span>
-          <span>{product.productViews} views</span>
-        </div>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 3 }}>
+            {soldOut ? (
+              <Chip label="Sold out" />
+            ) : (
+              <Chip label={`${item.productLeftCount} left`} sx={{ bgcolor: '#ecfdf5', color: '#047857' }} size="small" />
+            )}
+            <Typography variant="body2" color="text.secondary">
+              {item.productViews} views
+            </Typography>
+          </Stack>
 
-        <div className="mt-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-stone-500">Size</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {product.productSizes.map((size) => (
-              <button
-                key={size}
-                type="button"
-                onClick={() => setSelectedSize(size)}
-                className={`rounded-full border px-3 py-2 text-sm font-medium ${
-                  selectedSize === size ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700'
-                }`}
+          {needsSize && (
+            <Box sx={{ mt: 4 }}>
+              <Typography id="size-label" sx={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'text.secondary' }}>
+                Size
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                value={selectedSize}
+                onChange={(_, value: number | null) => {
+                  setSelectedSize(value);
+                  if (value !== null) setSizeError(false);
+                }}
+                aria-labelledby="size-label"
+                className="ms-size-grid"
+                sx={{ mt: 1.5, '& .MuiToggleButton-root': { borderRadius: '999px !important', border: '1px solid #e7e5e4 !important', px: 2, fontWeight: 600 } }}
               >
-                EU {size}
-              </button>
-            ))}
-          </div>
-        </div>
+                {sizes.map((size) => (
+                  <ToggleButton
+                    key={size}
+                    value={size}
+                    disabled={soldOut}
+                    sx={{ '&.Mui-selected, &.Mui-selected:hover': { bgcolor: 'primary.main', color: '#fff' } }}
+                  >
+                    EU {size}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              {sizeError && <FormHelperText error>Please select a size.</FormHelperText>}
+            </Box>
+          )}
 
-        <div className="mt-8 flex items-center gap-4">
-          <div className="flex items-center rounded-full border border-stone-200 bg-stone-50 p-1">
-            <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))} className="p-2 text-stone-700">
-              <Minus className="h-4 w-4" />
-            </button>
-            <span className="min-w-10 text-center text-sm font-medium text-stone-900">{quantity}</span>
-            <button type="button" onClick={() => setQuantity((value) => value + 1)} className="p-2 text-stone-700">
-              <Plus className="h-4 w-4" />
-            </button>
-          </div>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' }, mt: 4 }}>
+            <QuantityStepper value={Math.min(quantity, Math.max(available, 1))} max={Math.max(available, 1)} onChange={setQuantity} />
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<AddShoppingCartIcon />}
+              onClick={handleAdd}
+              disabled={soldOut || available <= 0}
+              sx={{ flex: 1 }}
+            >
+              {soldOut ? 'Sold out' : 'Add to cart'}
+            </Button>
+          </Stack>
+          {!soldOut && available <= 0 && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              You already have all available stock of this product in your cart.
+            </Alert>
+          )}
 
-          <button
-            type="button"
-            onClick={() => {
-              if (selectedSize) {
-                addItem(product, quantity);
-              }
-            }}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-800"
-          >
-            <ShoppingBag className="h-4 w-4" />
-            Add to cart
-          </button>
-        </div>
-
-        <div className="mt-8 rounded-[22px] bg-stone-50 p-4">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-stone-500">Description</p>
-          <p className="mt-3 text-sm leading-7 text-stone-600">{product.productDesc}</p>
-        </div>
+          <Box sx={{ mt: 4, p: 2, borderRadius: '22px', bgcolor: '#fafaf9' }}>
+            <Typography sx={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'text.secondary' }}>
+              Description
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, lineHeight: 1.9, whiteSpace: 'pre-line' }}>
+              {item.productDesc}
+            </Typography>
+          </Box>
+        </Box>
       </div>
-    </div>
+    </Stack>
   );
 }

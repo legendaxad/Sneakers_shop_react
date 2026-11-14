@@ -1,11 +1,14 @@
-import { API_BASE_URL } from '../constants';
+import { API_BASE_URL, PLACEHOLDER_IMAGE } from '../constants';
+import type { DeliveryAddress } from '../types/member';
 
-export const formatPrice = (value: number): string =>
-  new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(value);
+const priceFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+export const formatPrice = (value: number): string => priceFormatter.format(value || 0);
 
 export const formatDate = (value?: string): string => {
   if (!value) return '—';
@@ -17,18 +20,24 @@ export const formatDate = (value?: string): string => {
   });
 };
 
+/** Backend stores upload paths like `uploads/products/<uuid>.jpg`; they are served from the API origin. */
 export const resolveImageUrl = (value?: string | null): string => {
-  if (!value) {
-    return 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1200&q=80';
-  }
-
-  if (value.startsWith('http://') || value.startsWith('https://')) {
-    return value;
-  }
-
-  if (value.startsWith('/')) {
-    return `${API_BASE_URL}${value}`;
-  }
-
-  return `${API_BASE_URL}/${value.replace(/^\.?\/?/, '')}`;
+  if (!value) return PLACEHOLDER_IMAGE;
+  if (/^https?:\/\//.test(value)) return value;
+  const normalised = value.replace(/\\/g, '/').replace(/^\.?\/+/, '');
+  return `${API_BASE_URL}/${normalised}`;
 };
+
+export const formatAddress = (address?: DeliveryAddress | null): string[] => {
+  if (!address) return [];
+  return [
+    address.recipientName,
+    address.phone,
+    [address.addressLine1, address.addressLine2].filter(Boolean).join(', '),
+    [address.city, address.region, address.postalCode].filter(Boolean).join(', '),
+    address.country,
+  ].filter(Boolean);
+};
+
+export const titleCase = (value: string): string =>
+  value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
