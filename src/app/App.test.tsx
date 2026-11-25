@@ -248,5 +248,25 @@ describe('order history', () => {
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByRole('button', { name: /cancel order/i }));
     await waitFor(() => expect(orderService.updateOrder).toHaveBeenCalledWith({ orderId: 'order1', orderStatus: OrderStatus.DELETED }));
+    expect(await screen.findByRole('tab', { name: /cancelled/i })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('switches to the tab of the new status after an action', async () => {
+    loggedIn();
+    orderService.getMyOrders.mockResolvedValue([
+      { _id: 'order2', memberId: 'm1', orderTotal: 65, orderDelivery: 5, orderStatus: OrderStatus.PAUSE, orderItems: [], productData: [] },
+    ]);
+    orderService.updateOrder.mockResolvedValue({} as Order);
+    renderApp('/orders');
+    const user = userEvent.setup();
+    expect(await screen.findByRole('tab', { name: /^all$/i })).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(await screen.findByRole('button', { name: /confirm order/i }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /confirm order/i }));
+
+    expect(await screen.findByRole('tab', { name: /processing/i })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() =>
+      expect(orderService.getMyOrders).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, orderStatus: OrderStatus.PROCESS })),
+    );
   });
 });
