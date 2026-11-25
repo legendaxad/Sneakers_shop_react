@@ -1,26 +1,25 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ThemeProvider } from '@mui/material/styles';
-import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import App from './App';
-import theme from './MaterialTheme';
-import { useAuthStore, useRecentlyViewedStore, useWishlistStore } from './store';
-import { ApiError, memberApi, productApi } from '../services/api';
-import type { Member, TopMember } from '../types/member';
-import { ProductCollection, ProductStatus, type Product } from '../types/product';
-import { BLOG_ARTICLES } from '../data/blog';
-import { DEFAULT_AVATAR } from '../constants';
+import { addRecentlyViewed } from './screens/productsPage/slice';
+import { toggleWishlist } from './screens/wishlistPage/slice';
+import { ApiError } from './service/apiClient';
+import MemberService from './service/MemberService';
+import ProductService from './service/ProductService';
+import { makeStore } from './store';
+import { renderApp } from './testUtils';
+import { DEFAULT_AVATAR } from '../lib/config';
+import { BLOG_ARTICLES } from '../lib/data/blog';
+import { MemberStatus, MemberType } from '../lib/enums/member.enum';
+import { ProductCollection, ProductStatus } from '../lib/enums/product.enum';
+import type { Member, TopMember } from '../lib/types/member';
+import type { Product } from '../lib/types/product';
 
-vi.mock('../services/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../services/api')>();
-  return {
-    ...actual,
-    memberApi: { login: vi.fn(), signup: vi.fn(), logout: vi.fn(), getProfile: vi.fn(), updateProfile: vi.fn(), getTopUsers: vi.fn() },
-    productApi: { getProducts: vi.fn(), getProductCount: vi.fn(), getProduct: vi.fn(), getProductsByIds: vi.fn() },
-    orderApi: { createOrder: vi.fn(), getOrders: vi.fn(), updateOrder: vi.fn() },
-  };
-});
+vi.mock('./service/MemberService');
+vi.mock('./service/ProductService');
+vi.mock('./service/OrderService');
+const memberService = vi.mocked(MemberService.prototype);
+const productService = vi.mocked(ProductService.prototype);
 
 const oid = (n: number) => n.toString(16).padStart(24, '0');
 
@@ -44,39 +43,41 @@ const leaders: TopMember[] = [
   { _id: 'b', memberNick: 'runner_kim', memberPoint: 7 },
 ];
 
-const renderAt = (path: string) =>
-  render(
-    <ThemeProvider theme={theme}>
-      <MemoryRouter initialEntries={[path]}>
-        <App />
-      </MemoryRouter>
-    </ThemeProvider>,
-  );
+/** Store with recently viewed ids (newest first, as given). */
+const storeWithHistory = (ids: string[]) => {
+  const store = makeStore();
+  [...ids].reverse().forEach((id) => store.dispatch(addRecentlyViewed(id)));
+  return store;
+};
+
+/** Store with wishlist ids (newest first, as given). */
+const storeWithWishlist = (ids: string[]) => {
+  const store = makeStore();
+  [...ids].reverse().forEach((id) => store.dispatch(toggleWishlist(id)));
+  return store;
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useAuthStore.setState({ member: null, status: 'checking' });
-  useRecentlyViewedStore.setState({ ids: [] });
-  useWishlistStore.setState({ ids: [] });
-  vi.mocked(memberApi.getProfile).mockRejectedValue(new ApiError('You are not authenticated!', 401));
-  vi.mocked(memberApi.getTopUsers).mockResolvedValue(leaders);
-  vi.mocked(productApi.getProductCount).mockImplementation(async (filters = {}) =>
+  memberService.getMemberDetail.mockRejectedValue(new ApiError('You are not authenticated!', 401));
+  memberService.getTopUsers.mockResolvedValue(leaders);
+  productService.getProductCount.mockImplementation(async (filters = {}) =>
     filters.productCollection === ProductCollection.RUNNING ? 3 : filters.productCollection === ProductCollection.BASKETBALL ? 1 : filters.productCollection ? 0 : 4,
   );
-  vi.mocked(productApi.getProducts).mockImplementation(async (filters = {}) => {
+  productService.getProducts.mockImplementation(async (filters = {}) => {
     if (filters.order === 'productViews') {
       // Backend order: most viewed first; includes never-viewed products at the end.
       return [makeProduct(1, { productViews: 42 }), makeProduct(2, { productViews: 9 }), makeProduct(3, { productViews: 0 })];
     }
     return [makeProduct(10), makeProduct(11)];
   });
-  vi.mocked(productApi.getProductsByIds).mockImplementation(async (ids) => ids.map((id) => makeProduct(parseInt(id, 16))));
-  vi.mocked(productApi.getProduct).mockImplementation(async (id) => makeProduct(parseInt(id, 16)));
+  productService.getProductsByIds.mockImplementation(async (ids) => ids.map((id) => makeProduct(parseInt(id, 16))));
+  productService.getProduct.mockImplementation(async (id) => makeProduct(parseInt(id, 16)));
 });
 
 describe('homepage', () => {
   it('renders the hero with working calls to action', async () => {
-    renderAt('/');
+    renderApp('/');
     expect(await screen.findByRole('heading', { level: 1, name: /run louder/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /shop now/i })).toHaveAttribute('href', '/shop');
     expect(screen.getByRole('link', { name: /explore collection/i })).toHaveAttribute('href', '/shop?collection=RUNNING');
@@ -84,7 +85,7 @@ describe('homepage', () => {
   });
 
   it('shows only categories that have products, linking to the filtered shop', async () => {
-    renderAt('/');
+    renderApp('/');
     const section = (await screen.findByRole('heading', { name: /find your next pair/i })).closest('section')!;
     const running = await within(section).findByRole('link', { name: /running, 3 styles/i });
     expect(running).toHaveAttribute('href', '/shop?collection=RUNNING');
@@ -93,7 +94,7 @@ describe('homepage', () => {
   });
 
   it('ranks most viewed products by real view counts and hides never-viewed products', async () => {
-    renderAt('/');
+    renderApp('/');
     const section = (await screen.findByRole('heading', { name: /most viewed/i })).closest('section')!;
     const cards = await within(section).findAllByRole('article');
     expect(cards).toHaveLength(2);
@@ -102,11 +103,11 @@ describe('homepage', () => {
     expect(within(cards[1]).getByText('9 views')).toBeInTheDocument();
     expect(within(cards[0]).getByRole('link', { name: /view product/i })).toHaveAttribute('href', `/product/${oid(1)}`);
     expect(within(section).queryByText('Product 3')).not.toBeInTheDocument();
-    expect(productApi.getProducts).toHaveBeenCalledWith(expect.objectContaining({ order: 'productViews' }));
+    expect(productService.getProducts).toHaveBeenCalledWith(expect.objectContaining({ order: 'productViews' }));
   });
 
   it('shows the top customers leaderboard with a default avatar fallback', async () => {
-    renderAt('/');
+    renderApp('/');
     const list = await screen.findByRole('list', { name: /top customers by points/i });
     const rows = within(list).getAllByRole('listitem');
     expect(rows).toHaveLength(2);
@@ -117,27 +118,26 @@ describe('homepage', () => {
   });
 
   it('shows an empty state when no customer has points yet', async () => {
-    vi.mocked(memberApi.getTopUsers).mockResolvedValue([]);
-    renderAt('/');
+    memberService.getTopUsers.mockResolvedValue([]);
+    renderApp('/');
     expect(await screen.findByText(/no leaders yet/i)).toBeInTheDocument();
   });
 
   it('lists recently viewed products from local history using current product data', async () => {
-    useRecentlyViewedStore.setState({ ids: [oid(21), oid(20)] });
-    renderAt('/');
+    renderApp('/', storeWithHistory([oid(21), oid(20)]));
     const section = (await screen.findByRole('heading', { name: /recently viewed/i })).closest('section')!;
     expect(await within(section).findByText('Product 21')).toBeInTheDocument();
-    expect(productApi.getProductsByIds).toHaveBeenCalledWith([oid(21), oid(20)]);
+    expect(productService.getProductsByIds).toHaveBeenCalledWith([oid(21), oid(20)]);
   });
 
   it('hides the recently viewed section when there is no history', async () => {
-    renderAt('/');
+    renderApp('/');
     await screen.findByRole('heading', { name: /most viewed/i });
     expect(screen.queryByRole('heading', { name: /recently viewed/i })).not.toBeInTheDocument();
   });
 
   it('links journal cards to working article pages', async () => {
-    renderAt('/');
+    renderApp('/');
     const user = userEvent.setup();
     const article = BLOG_ARTICLES[1];
     await user.click(await screen.findByRole('link', { name: `Read article: ${article.title}` }));
@@ -148,58 +148,56 @@ describe('homepage', () => {
 
 describe('recently viewed tracking', () => {
   it('records a product when its page loads', async () => {
-    renderAt(`/product/${oid(30)}`);
+    const { store } = renderApp(`/product/${oid(30)}`);
     await screen.findByRole('heading', { level: 1, name: 'Product 30' });
-    await waitFor(() => expect(useRecentlyViewedStore.getState().ids[0]).toBe(oid(30)));
+    await waitFor(() => expect(store.getState().productsPage.recentlyViewedIds[0]).toBe(oid(30)));
   });
 });
 
 describe('journal', () => {
   it('lists every article on /blog', async () => {
-    renderAt('/blog');
+    renderApp('/blog');
     for (const article of BLOG_ARTICLES) {
       expect(await screen.findByRole('link', { name: `Read article: ${article.title}` })).toHaveAttribute('href', `/blog/${article.slug}`);
     }
   });
 
   it('shows a not-found state for unknown articles', async () => {
-    renderAt('/blog/does-not-exist');
+    renderApp('/blog/does-not-exist');
     expect(await screen.findByRole('heading', { name: /article not found/i })).toBeInTheDocument();
   });
 });
 
 describe('wishlist', () => {
   it('saves from the product page and lists the product on the wishlist page', async () => {
-    renderAt(`/product/${oid(40)}`);
+    const { store } = renderApp(`/product/${oid(40)}`);
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: /save product 40 to wishlist/i }));
-    expect(useWishlistStore.getState().ids).toEqual([oid(40)]);
+    expect(store.getState().wishlistPage.wishlistIds).toEqual([oid(40)]);
     expect(screen.getByRole('button', { name: /remove product 40 from wishlist/i })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('shows saved products and removes them', async () => {
-    useWishlistStore.setState({ ids: [oid(50), oid(51)] });
-    renderAt('/wishlist');
+    const { store } = renderApp('/wishlist', storeWithWishlist([oid(50), oid(51)]));
     const user = userEvent.setup();
     expect(await screen.findByText('Product 50')).toBeInTheDocument();
     expect(screen.getByText('Product 51')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /remove product 50 from wishlist/i }));
-    expect(useWishlistStore.getState().ids).toEqual([oid(51)]);
+    expect(store.getState().wishlistPage.wishlistIds).toEqual([oid(51)]);
     await waitFor(() => expect(screen.queryByText('Product 50')).not.toBeInTheDocument());
   });
 
   it('flags saved products that are no longer available', async () => {
-    useWishlistStore.setState({ ids: [oid(60), oid(61)] });
-    vi.mocked(productApi.getProductsByIds).mockResolvedValue([makeProduct(60)]);
-    renderAt('/wishlist');
+    productService.getProductsByIds.mockResolvedValue([makeProduct(60)]);
+    const { store } = renderApp('/wishlist', storeWithWishlist([oid(60), oid(61)]));
     const user = userEvent.setup();
     expect(await screen.findByText(/1 saved product is no longer available/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^remove$/i }));
-    expect(useWishlistStore.getState().ids).toEqual([oid(60)]);
+    expect(store.getState().wishlistPage.wishlistIds).toEqual([oid(60)]);
   });
 
   it('shows an empty state', async () => {
-    renderAt('/wishlist');
+    renderApp('/wishlist');
     expect(await screen.findByRole('heading', { name: /your wishlist is empty/i })).toBeInTheDocument();
   });
 });
@@ -207,8 +205,8 @@ describe('wishlist', () => {
 describe('signup profile photo', () => {
   const member: Member = {
     _id: 'm1',
-    memberType: 'USER',
-    memberStatus: 'ACTIVE',
+    memberType: MemberType.USER,
+    memberStatus: MemberStatus.ACTIVE,
     memberNick: 'new_user',
     memberPhone: '01012345678',
     memberPoint: 0,
@@ -221,8 +219,8 @@ describe('signup profile photo', () => {
   };
 
   it('previews, validates and uploads the selected photo', async () => {
-    vi.mocked(memberApi.signup).mockResolvedValue({ ...member, memberImage: 'uploads/members/x.png' });
-    renderAt('/signup');
+    memberService.signup.mockResolvedValue({ ...member, memberImage: 'uploads/members/x.png' });
+    renderApp('/signup');
     const user = userEvent.setup({ applyAccept: false });
     const input = await screen.findByLabelText(/profile photo$/i);
 
@@ -242,20 +240,20 @@ describe('signup profile photo', () => {
     await fillForm(user);
     await user.click(screen.getByRole('button', { name: /create account/i }));
     await waitFor(() =>
-      expect(memberApi.signup).toHaveBeenCalledWith(
+      expect(memberService.signup).toHaveBeenCalledWith(
         expect.objectContaining({ memberNick: 'new_user', memberPhone: '01012345678', memberPassword: 'secret12' }),
         photo,
       ),
     );
-    const sentFields = vi.mocked(memberApi.signup).mock.calls[0][0] as unknown as Record<string, unknown>;
+    const sentFields = memberService.signup.mock.calls[0][0] as unknown as Record<string, unknown>;
     expect(sentFields).not.toHaveProperty('memberType');
     expect(sentFields).not.toHaveProperty('memberStatus');
     expect(sentFields).not.toHaveProperty('memberPoint');
   });
 
   it('signs up without a photo and allows removing a selected one', async () => {
-    vi.mocked(memberApi.signup).mockResolvedValue(member);
-    renderAt('/signup');
+    memberService.signup.mockResolvedValue(member);
+    renderApp('/signup');
     const user = userEvent.setup();
     expect(await screen.findByAltText(/default profile avatar/i)).toHaveAttribute('src', DEFAULT_AVATAR);
     await user.upload(screen.getByLabelText(/profile photo$/i), new File(['png'], 'me.png', { type: 'image/png' }));
@@ -264,6 +262,6 @@ describe('signup profile photo', () => {
 
     await fillForm(user);
     await user.click(screen.getByRole('button', { name: /create account/i }));
-    await waitFor(() => expect(memberApi.signup).toHaveBeenCalledWith(expect.any(Object), undefined));
+    await waitFor(() => expect(memberService.signup).toHaveBeenCalledWith(expect.any(Object), undefined));
   });
 });
